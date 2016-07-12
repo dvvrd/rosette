@@ -13,7 +13,7 @@
 ; The custodian, process, stdout, stdin, and stderr fields store the custodian, 
 ; process handle, standard output, standard input, and standard error for the 
 ; created process.  These fields are populated with non-false values when a 
-; server is initialized A server can be initialized and shutdown any number of times.  
+; server is initialized. A server can be initialized and shutdown any number of times.  
 ; Calling initialize on a server that has already been initialized has no effect.
 (struct server 
   (path opts 

@@ -44,7 +44,7 @@
   
 (define nil (union '() @any/c))
 
-; A λunion is a symoblic union that must contain a procedure object.  Every 
+; A λunion is a symbolic union that must contain a procedure object.  Every 
 ; λunion is itself an applicable procedure.
 (struct λunion union (procedure)
   #:transparent

@@ -243,7 +243,7 @@ The @seclink["ch:essentials"]{Essentials} chapter introduced the key concepts of
          ([type (and/c solvable? type? (not/c function?))])]{
 Searches for a minimal set of @racket[define/debug] expressions of 
 the given @tech["solvable type"](s) that are collectively responsible for the observed failure of @racket[expr]. 
-If no expressions of the specified types are relevent to the failure, an error is thrown.  The 
+If no expressions of the specified types are relevant to the failure, an error is thrown.  The 
 returned expressions, if any, are called a minimal unsatisfiable core. The core expressions 
 are relevant to the observed failure in that preventing the failure requries modifying at least one 
 core expression. In particular, if all of the non-core expressions were replaced with 
