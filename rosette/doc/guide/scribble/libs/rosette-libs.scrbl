@@ -3,7 +3,7 @@
 @(require (for-label 
            rosette/base/form/define rosette/solver/solution rosette/query/query rosette/query/eval 
            rosette/base/core/term rosette/lib/angelic
-           (except-in rosette/query/debug assert false true)
+           (except-in rosette/query/debug assert )
            (only-in rosette/lib/synthax ?? choose define-synthax generate-forms print-forms)
            (only-in rosette/base/core/safe assert)
            (only-in rosette/base/base function? bitvector bvshl bvashr bvlshr bvadd bvsub bvmul)
@@ -88,7 +88,7 @@ The hole @racket[(id e ... k)] must specify the inlining bound
 (eval:no-prompt
  (code:comment "The body of nnf=> is a hole to be filled with an")
  (code:comment "expression of depth (up to) 1 from the NNF grammar.")
- (define (nnf=> a b)
+ (define (nnf=> x y)
    (nnf x y 1)))
 (define-symbolic a b boolean?)
 (eval:alts
@@ -96,7 +96,7 @@ The hole @racket[(id e ... k)] must specify the inlining bound
   (synthesize
    #:forall (list a b)
    #:guarantee (assert (equal? (=> a b) (nnf=> a b)))))
- `(define (nnf=> x y) (,|| (! a) b)))
+ `(define (nnf=> x y) (,|| (! x) y)))
 ]
 
 Since @racket[define-synthax] uses macros to implement recursive grammars, 
@@ -113,7 +113,8 @@ Sketch completions can only be generated for programs that have been saved to di
 
 @defproc[(print-forms [solution solution?]) void?]{
   Pretty-prints the result of applying @racket[generate-forms] to the given  
-  @racket[solution].     
+  @racket[solution]. Sketch completions can only be generated and printed
+ for programs that have been saved to disk. 
 }
 
 @section{Angelic Execution Library}

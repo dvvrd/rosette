@@ -16,9 +16,18 @@
 (define z3-opts '("-smt2" "-in"))
 
 (define (make-z3)
-  ;(unless (file-exists? z3-path)
-  ;  (raise-user-error 'z3 "Failed to locate z3 binary at '~a'" z3-path))
-  (z3 (server z3-path z3-opts) '() '() '() (env) '()))
+  (define real-z3-path
+    ;; Check for 'z3' and 'z3.exe' executables, else print a warning
+    (if (file-exists? z3-path)
+      z3-path
+      (let ([z3.exe-path (path-replace-suffix z3-path ".exe")])
+        (if (file-exists? z3.exe-path)
+          z3.exe-path
+          (begin
+            (printf "warning: could not find z3 executable in '~a'"
+                    (path->string (simplify-path (path->directory-path z3.exe-path))))
+            z3-path)))))
+  (z3 (server real-z3-path z3-opts) '() '() '() (env) '()))
   
 (struct z3 (server asserts mins maxs env level)
   #:mutable
@@ -96,7 +105,8 @@
   (reset)
   (set-option ':produce-unsat-cores 'false)
   (set-option ':auto-config 'true)
-  (set-option ':smt.relevancy 2))
+  (set-option ':smt.relevancy 2)
+  (set-option ':smt.mbqi.max_iterations 10000000))
 
 (define (reset-core-options)
   (reset)
