@@ -5,7 +5,7 @@
          "../core/merge.rkt" "../core/bool.rkt")
 
 (provide @if @and @or @not @nand @nor @xor @implies
-         @unless @when @cond @case else)
+         @unless @when @cond @case else branch-and-merge)
 
 ; Symbolic conditions are handled by speculatively executing both branches,
 ; and then merging their results and updates to state (if any). When a branch is 
