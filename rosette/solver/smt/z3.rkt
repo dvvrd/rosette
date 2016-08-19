@@ -15,20 +15,22 @@
 (define-runtime-path z3-path (build-path ".." ".." ".." "bin" "z3"))
 (define z3-opts '("-smt2" "-in"))
 
-(define (make-z3)
-  (define real-z3-path
-    ;; Check for 'z3' and 'z3.exe' executables, else print a warning
-    (if (file-exists? z3-path)
-      z3-path
-      (let ([z3.exe-path (path-replace-suffix z3-path ".exe")])
-        (if (file-exists? z3.exe-path)
-          z3.exe-path
-          (begin
-            (printf "warning: could not find z3 executable in '~a'"
-                    (path->string (simplify-path (path->directory-path z3.exe-path))))
-            z3-path)))))
-  (z3 (server real-z3-path z3-opts) '() '() '() (env) '()))
-  
+(define make-z3
+  (case-lambda
+    [() (let ([real-z3-path
+              ;; Check for 'z3' and 'z3.exe' executables, else print a warning
+              (if (file-exists? z3-path)
+                  z3-path
+                  (let ([z3.exe-path (path-replace-suffix z3-path ".exe")])
+                    (if (file-exists? z3.exe-path)
+                        z3.exe-path
+                        (begin
+                          (printf "warning: could not find z3 executable in '~a'"
+                                  (path->string (simplify-path (path->directory-path z3.exe-path))))
+                          z3-path))))])
+         (make-z3 real-z3-path))]
+    [(path) (z3 (server path z3-opts) '() '() '() (env) '())]))
+
 (struct z3 (server asserts mins maxs env level)
   #:mutable
   #:methods gen:custom-write
