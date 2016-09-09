@@ -2,7 +2,7 @@
 
 #lang racket
 
-(provide trace-to-file show-file-trace multiplex-output-port trace-port)
+(provide trace-to-file show-file-trace multiplex-output-port trace-port trace-stdout-port)
 
 ; Appends contents of the trace file with the given expression.
 ; Can be then viewed with show-file-trace.
@@ -29,6 +29,9 @@
 ; Can be then viewed with show-file-trace.
 (define (trace-port file) (open-output-file (trace-path file) #:exists 'append))
 
+; Returns output port that may be used to output debug information right into the console.
+(define (trace-stdout-port) stdout)
+
 ; Produces output port duplicating data into the given ports.
 (define (multiplex-output-port output-port1 output-port2)
   (let ([write-impl (λ (s non-block? port)
@@ -52,3 +55,4 @@
 ; ---------------------- Private section ----------------------
 
 (define (trace-path file) (build-path (find-system-path 'temp-dir) file))
+(define stdout (current-output-port))

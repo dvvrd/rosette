@@ -5,15 +5,7 @@
 
 (define (fib n)
   (let ([k 2])
+    (displayln (format "working: ~a ~a" n (< n k)) (current-error-port))
     (if (< n k) 1 (+ (fib (- n 1)) (fib (- n 2))))))
 
-;(define (f n) (case-lambda
-;            [() 10]
-;            [(x) x]
-;            [(x y) (list y x)]
-;            [r r]))
-;
-;    (list ((f 1) 1)
-;          ((f 1) 1)
-;          ((f 1) 1 2)
-;          ((f 1) 1 2 3))
+(verify/unbound (assert (< (fib m) 0)))

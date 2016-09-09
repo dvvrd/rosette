@@ -4,7 +4,7 @@
          "server.rkt" "cmd.rkt" "env.rkt" 
          "../solver.rkt" "../solution.rkt" 
          (only-in racket [remove-duplicates unique])
-         (only-in "smtlib2.rkt" reset set-option check-sat get-model get-unsat-core push pop)
+         (only-in "smtlib2.rkt" reset set-option set-logic check-sat get-model get-unsat-core push pop)
          (only-in "../../base/core/term.rkt" term term? term-type)
          (only-in "../../base/core/bool.rkt" @boolean?)
          (only-in "../../base/core/bitvector.rkt" bitvector? bv?)
@@ -105,6 +105,7 @@
 
 (define (reset-default-options)
   (reset)
+  (set-logic 'HORN) ; TODO: move it to spacer
   (set-option ':produce-unsat-cores 'false)
   (set-option ':auto-config 'true)
   (set-option ':smt.relevancy 2)
