@@ -1,6 +1,6 @@
 #lang racket
 
-(require (except-in "safe.rkt" define)
+(require "safe.rkt"
          "base/unbound/unbound.rkt")
 
 (provide

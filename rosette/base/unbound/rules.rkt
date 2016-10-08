@@ -1,30 +1,30 @@
 #lang racket
 
 (require
-  racket/syntax syntax/id-table
+  racket/syntax
   (only-in "../core/term.rkt"
-           constant expression define-operator type-of
-           @app solvable-domain solvable-range)
-  (only-in "../core/bool.rkt" @boolean? @forall @=> @&&))
+           constant expression type-of @app
+           solvable-domain solvable-range)
+  (only-in "../core/polymorphic.rkt"
+           ite ite* guarded)
+  (only-in "../core/bool.rkt" @boolean? @forall @! @=> @&&)
+  (only-in "../core/function.rkt" ~>))
 
-
-(provide dbg (struct-out horn-clause) rules->assertions @app add-rule
-         recursive-function->symbolic-constant recursive?
-         argument->symbolic-constant argument?
-         recursive-function->symbolic-relation symbolic-constant->symbolic-relation
-         current-head current-args current-free-vars current-premises)
+(provide dbg @app (struct-out horn-clause)
+         register-solvable-function
+         rules->assertions term->rules eval/horn
+         current-head current-args)
 
 (define-syntax-rule (dbg ft args ...)
   (displayln (format ft (if (syntax? args) (syntax->datum args) args) ...) (current-error-port)))
 ;  void)
 
 
-(struct horn-clause (id free-vars premises conclusion)
+(struct horn-clause (free-vars premises conclusion)
   #:methods gen:custom-write
   [(define (write-proc self port mode)
      (fprintf port
-              "~a(~a): [=> ~a ~a]\n"
-              (syntax->datum (horn-clause-id self))
+              "∀(~a) [=> ~a ~a]\n"
               (string-join
                (map
                 (curry format "~a")
@@ -33,74 +33,106 @@
               (horn-clause-premises self)
               (horn-clause-conclusion self)))])
 
-(define rules (make-hash))
+(define solvable-functions-cache (mutable-set))
+(define relations-cache (make-hash))
 
-(define recursive-functions-cache (make-free-id-table))
-(define relations-cache (make-free-id-table))
-(define arguments-cache (make-free-id-table))
+(define (solvable-function? f)
+  (set-member? solvable-functions-cache f))
 
-(define (recursive? f)
-  (if (identifier? f)
-      (or (member f (free-id-table-keys recursive-functions-cache) free-identifier=?)
-          (member f (free-id-table-keys relations-cache) free-identifier=?))
-      (member f (free-id-table-values recursive-functions-cache))))
+(define (register-solvable-function f)
+  (set-add! solvable-functions-cache f))
 
-(define (recursive-function->symbolic-constant f type)
-  (free-id-table-ref! recursive-functions-cache f
-                      ; Failure-expression should be wrapped into thunk, but it does not work for now
-                      ; (http://bugs.racket-lang.org/query/?cmd=view&pr=15346).
-                      ; TODO: wrap into thunk when fixed
-                      ;             (thunk
-                      (constant (syntax->datum f) type)))
+(define (function->relation f)
+  (hash-ref! relations-cache f
+             (thunk
+              (constant (syntax->datum (format-id #f "~a°" (format "~a" f))) (function-type->relational-type (type-of f))))))
 
-(define (recursive-function->symbolic-relation f func-type)
-  (free-id-table-ref! relations-cache f
-                      ; Failure-expression should be wrapped into thunk, but it does not work for now
-                      ; (http://bugs.racket-lang.org/query/?cmd=view&pr=15346).
-                      ; TODO: wrap into thunk when fixed
-                      ;             (thunk
-                      (constant (syntax->datum (format-id #f "~a°" f)) (function-type->relational-type func-type))))
+(define (eval/horn t)
+  (term->horn-clauses #t t))
 
-(define (symbolic-constant->symbolic-relation f)
-  (let ([id (free-id-table-key recursive-functions-cache f)])
-    (unless id
-      (error 'rules "Symbolic constant for ~a not registered" f))
-    (recursive-function->symbolic-relation id (type-of f))))
+(define (term->rules t)
+  (parameterize ([current-rules (list)])
+    (term->horn-clauses #t t)
+    (current-rules)))
 
-(define (argument? id)
-  (member id (free-id-table-keys arguments-cache) free-identifier=?))
+(define (term->horn-clauses tail-position? t)
+  (match t
+    [(expression (== @app) f args ...)
+     (let* ([args (terms->horn-clauses args)]
+            [result
+             (if (solvable-function? f)
+                 (let* ([id (fresh-intermediate-var 'ε)]
+                        [ε (constant id (solvable-range (type-of f)))]
+                        [rel (function->relation f)])
+                   (add-free-var ε)
+                   (add-premise (apply expression `(, @app ,rel ,@args ,ε)))
+                   ε)
+                 (expression @app f args))])
+       (cond [tail-position? (add-rule result)])
+       result)]
+    [(expression (== ite) test then else)
+     (let* ([test (term->horn-clauses #f test)]
+            [then
+             (parameterize ([current-premises (cons test (current-premises))]
+                            [current-free-vars (current-free-vars)])
+               (term->horn-clauses tail-position? then))]
+            [else
+             (parameterize ([current-premises (cons (@! test) (current-premises))]
+                            [current-free-vars (current-free-vars)])
+               (term->horn-clauses tail-position? else))])
+       (expression ite test then else))]
+    [(expression (== ite*) gvs)
+     (expression ite*
+                 (map (λ (gv)
+                        (match-let* ([(guarded g v) gv]
+                                     [g (term->horn-clauses #f g)])
+                          (parameterize ([current-premises (cons g (current-premises))]
+                                         [current-free-vars (current-free-vars)])
+                            (term->horn-clauses tail-position? v))))
+                      gvs))]
+    [(expression op args ...)
+     (let* ([args (terms->horn-clauses args)]
+            [result (apply expression `(,op ,@args))])
+       (cond [tail-position? (add-rule result)])
+       result)]
+    [(constant _ _)
+     (add-free-var t)
+     (cond [tail-position? (add-rule t)])
+     t]
+    [_
+     (cond [tail-position? (add-rule t)])
+     t]))
 
-(define (argument->symbolic-constant arg type)
-  (free-id-table-ref! arguments-cache arg
-                      ; Failure-expression should be wrapped into thunk, but it does not work for now
-                      ; (http://bugs.racket-lang.org/query/?cmd=view&pr=15346).
-                      ; TODO: wrap into thunk when fixed
-                      ;             (thunk
-                      (constant (syntax->datum arg) type)))
-
-; !!!!!!! TODO: Delete it when types implemented !!!!!!!
-(require (only-in "../core/function.rkt" ~>)         ;!!
-         (only-in "../core/real.rkt" @integer?))     ;!!
-; !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+(define (terms->horn-clauses ts)
+  (map (curry term->horn-clauses #f) ts))
 
 ; Takes conclusion and constructs horn-clause using current traversal context.
 (define (add-rule value)
-  (let* ([id (current-head)]
-         [existing-clauses (hash-ref! rules id (list))]
-         [conclusion (apply expression
-                            `(, @app
-                              , (recursive-function->symbolic-relation (current-head) (~> @integer? @integer?)) ; TODO: TYPES!
-                              ,@(current-args)
-                              ,value))]
-         [resulting-clause (horn-clause (current-head) (current-free-vars) (current-premises) conclusion)])
-    (unless (member resulting-clause existing-clauses)
+  (let* ([conclusion
+          (if (current-head)
+              (apply expression
+                     `(, @app
+                       , (function->relation (current-head))
+                       ,@(current-args)
+                       ,value))
+              value)]
+         [resulting-clause (horn-clause (current-free-vars) (current-premises) conclusion)])
+    (unless (member resulting-clause (current-rules))
       (dbg "ADDING RULE ~a" resulting-clause)
-      (hash-set! rules id (cons resulting-clause existing-clauses)))))
+      (current-rules (cons resulting-clause (current-rules))))))
+
+(define (add-free-var var)
+  (unless (member var (current-free-vars))
+    (current-free-vars (cons var (current-free-vars)))))
+
+(define (add-premise premise)
+  (current-premises (cons premise (current-premises))))
 
 (define current-head (make-parameter #f))
 (define current-args (make-parameter #f))
 (define current-free-vars (make-parameter (list)))
 (define current-premises (make-parameter (list)))
+(define current-rules (make-parameter (list)))
 
 (define (rule->implication clause)
   (expression @=>
@@ -117,12 +149,16 @@
                 (expression @forall (horn-clause-free-vars rule) (rule->implication rule))
                 rule))
           rules)]
-    [(_) (rules->assertions (flatten (hash-values rules)))]))
+    [(_) (rules->assertions (current-rules))]))
 
 ; Transforms (@integer? ~> @integer?) to (@integer? ~> @integer? ~> @boolean?)
 (define (function-type->relational-type t)
   (apply ~> `(,@(solvable-domain t) ,(solvable-range t) , @boolean?)))
 
-(define (free-id-table-key table value)
-  (for/or ([(key val) (in-free-id-table table)])
-    (and (equal? val value) key)))
+(define current-intermediate-vars-count (make-parameter 0))
+
+(define (fresh-intermediate-var prefix)
+  (begin0
+    (format-id #f "~a~a" prefix (current-intermediate-vars-count))
+    (current-intermediate-vars-count
+     (add1 (current-intermediate-vars-count)))))

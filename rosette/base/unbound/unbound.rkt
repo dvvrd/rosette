@@ -9,5 +9,5 @@
 (provide
   (filtered-out drop@
     (combine-out
-     @define verify/unbound
+     define/unbound verify/unbound
     )))
