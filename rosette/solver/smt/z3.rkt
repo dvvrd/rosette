@@ -1,10 +1,10 @@
 #lang racket
 
 (require racket/runtime-path 
-         "server.rkt" "cmd.rkt" "env.rkt" 
-         "../solver.rkt" "../solution.rkt" 
+         "server.rkt" "cmd.rkt" "env.rkt"
+         "../solver.rkt" "../horn-solver.rkt" "../solution.rkt"
          (only-in racket [remove-duplicates unique])
-         (only-in "smtlib2.rkt" reset set-option set-logic check-sat get-model get-unsat-core push pop)
+         (only-in "smtlib2.rkt" reset set-option check-sat get-model get-unsat-core query push pop)
          (only-in "../../base/core/term.rkt" term term? term-type)
          (only-in "../../base/core/bool.rkt" @boolean?)
          (only-in "../../base/core/bitvector.rkt" bitvector? bv?)
@@ -29,9 +29,9 @@
                                   (path->string (simplify-path (path->directory-path z3.exe-path))))
                           z3-path))))])
          (make-z3 real-z3-path))]
-    [(path) (z3 (server path z3-opts) '() '() '() (env) '())]))
+    [(path) (z3 (server path z3-opts) '() '() '() '() (env) '())]))
 
-(struct z3 (server asserts mins maxs env level)
+(struct z3 (server asserts mins maxs rules env level)
   #:mutable
   #:methods gen:custom-write
   [(define (write-proc self port mode) (fprintf port "#<z3>"))]
@@ -61,7 +61,7 @@
      (server-shutdown (z3-server self)))
 
    (define (solver-push self)
-     (match-define (z3 server (app unique asserts) (app unique mins) (app unique maxs) env level) self)
+     (match-define (z3 server (app unique asserts) (app unique mins) (app unique maxs) _ env level) self)
      (server-write
       server
       (begin
@@ -71,7 +71,7 @@
      (set-z3-level! self (cons (dict-count env) level)))
    
    (define (solver-pop self [k 1])
-     (match-define (z3 server _ _ _ env level) self)
+     (match-define (z3 server _ _ _ _ env level) self)
      (when (or (<= k 0) (> k (length level)))
        (error 'solver-pop "expected 1 < k <= ~a, given ~a" (length level) k))
      (server-write server (pop k))
@@ -81,7 +81,7 @@
      (set-z3-level! self (drop level k)))
      
    (define (solver-check self)
-     (match-define (z3 server (app unique asserts) (app unique mins) (app unique maxs) env _) self)
+     (match-define (z3 server (app unique asserts) (app unique mins) (app unique maxs) _ env _) self)
      (cond [(ormap false? asserts) (unsat)]
            [else (server-write
                   server
@@ -92,7 +92,7 @@
                  (server-read server (decode env))]))
    
    (define (solver-debug self)
-     (match-define (z3 server (app unique asserts) _ _ _ _) self)
+     (match-define (z3 server (app unique asserts) _ _ _ _ _) self)
      (cond [(ormap false? asserts) (unsat (list #f))]
            [else (solver-clear-env! self)
                  (server-write (z3-server self) (reset-core-options))
@@ -101,11 +101,23 @@
                   (begin (encode-for-proof (z3-env self) asserts)
                          (check-sat)
                          (get-unsat-core)))
-                 (server-read server (decode (z3-env self)))]))])
+                 (server-read server (decode (z3-env self)))]))]
+  #:methods gen:horn-solver
+  [
+   (define (solver-add-rules self rules)
+     (set-z3-rules! self (append (z3-rules self) rules)))
+
+   (define (solver-query self q)
+     (server-write
+      (z3-server self)
+      (begin (encode-rules (z3-env self) (z3-rules self))
+             (query (ref! (z3-env self) q))))
+     (solver-clear-stacks! self)
+     (server-read (z3-server self) (decode env)))]
+  )
 
 (define (reset-default-options)
   (reset)
-  (set-logic 'HORN) ; TODO: move it to spacer
   (set-option ':produce-unsat-cores 'false)
   (set-option ':auto-config 'true)
   (set-option ':smt.relevancy 2)

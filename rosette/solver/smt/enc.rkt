@@ -16,7 +16,8 @@
                   @bvnot @bvor @bvand @bvxor @bvshl @bvlshr @bvashr
                   @bvneg @bvadd @bvmul @bvudiv @bvsdiv @bvurem @bvsrem @bvsmod
                   @concat @extract @zero-extend @sign-extend 
-                  @integer->bitvector @bitvector->integer @bitvector->natural))
+                  @integer->bitvector @bitvector->integer @bitvector->natural)
+         (only-in "../../base/unbound/rules.rkt" @rel @var @rule))
 
 (provide enc)
 
@@ -30,9 +31,11 @@
   (ref!
    env v
    (match v
-     [(? expression?) (enc-expr v env quantified)]
-     [(? constant?)   (enc-const v env quantified)]
-     [_               (enc-lit v env quantified)])
+     [(? constant?)             (enc-const v env quantified)]
+     [(expression (== @var) id) (enc-const v env quantified)]
+     [(expression (== @rel) id) (enc-const v env quantified)]
+     [(? expression?)           (enc-expr v env quantified)]
+     [_                         (enc-lit v env quantified)])
    quantified))
 
 (define (enc-expr v env quantified)  
@@ -105,7 +108,9 @@
   [@bvnot $bvnot] [@bvor $bvor] [@bvand $bvand] [@bvxor $bvxor] 
   [@bvshl $bvshl] [@bvlshr $bvlshr] [@bvashr $bvashr]
   [@bvneg $bvneg] [@bvadd $bvadd] [@bvmul $bvmul] [@bvudiv $bvudiv] [@bvsdiv $bvsdiv]
-  [@bvurem $bvurem] [@bvsrem $bvsrem] [@bvsmod $bvsmod] [@concat $concat])
+  [@bvurem $bvurem] [@bvsrem $bvsrem] [@bvsmod $bvsmod] [@concat $concat]
+  ; datalog
+  [@rule $rule])
 
 
 (define ($quotient tx ty)

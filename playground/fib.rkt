@@ -11,6 +11,5 @@
     (displayln (format "working: ~a ~a" n (< n k)) (current-error-port))
     (if (< n (- k 1)) p (if (< n k) p (+ (fib (- n p)) (fib (- n k)))))))
 
-;(fib m)
-
 (verify/unbound (assert (> (fib m) 0)))
+

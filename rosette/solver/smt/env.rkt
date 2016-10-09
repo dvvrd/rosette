@@ -2,12 +2,13 @@
 
 (require racket/syntax 
          (only-in "smtlib2.rkt" Int Real Bool BitVec
-                  declare-const declare-fun define-const define-fun assert
+                  declare-const declare-fun define-const define-fun declare-var declare-rel assert
                   [< smt/<] [<= smt/<=]) 
          "../../base/core/term.rkt" 
          (only-in "../../base/core/bool.rkt" @boolean?)
          (only-in "../../base/core/bitvector.rkt" bitvector? bitvector-size)
-         (only-in "../../base/core/real.rkt" @integer? @real?))
+         (only-in "../../base/core/real.rkt" @integer? @real?)
+         (only-in "../../base/unbound/rules.rkt" @rel @var))
 
 (provide (rename-out [make-hash env]) ref! clear! smt-type)
 
@@ -68,7 +69,10 @@
            (let ([id (smt-id 'c (dict-count defs))]
                  [t (term-type v)])
              (dict-set! defs v id)
-             (declare-fun id (map smt-type (solvable-domain t)) (smt-type (solvable-range t)))
+             (match v
+               [(? constant?)             (declare-fun id (map smt-type (solvable-domain t)) (smt-type (solvable-range t)))]
+               [(expression (== @var) _) (declare-var id (smt-type t))]
+               [(expression (== @rel) _) (declare-rel id (map smt-type (solvable-domain t)))])
              id)))]
     [(_ env val enc quantified)
      (let* ([defs env]

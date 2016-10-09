@@ -73,6 +73,24 @@
 (define (define-fun id args type body)
   (printf-smt "(define-fun ~a ~a ~a ~a)" id args type body))
 
+; Datalog format
+
+(define (rule implication)
+  (printf-smt "(rule ~a)" implication))
+
+(define (skip x)
+  (printf-smt "~a" x))
+
+(define (declare-rel id type)
+  (printf-smt "(declare-rel ~a ~a)" id type))
+
+(define (declare-var id type)
+  (printf-smt "(declare-var ~a ~a)" id type))
+
+(define (query q)
+  (printf-smt "(query ~a :print-certificate true)\n" q))
+
+
 ; Applications of uninterpreted functions.
 (define (app f . args)
   `(,f ,@args))
@@ -125,5 +143,3 @@
 
 (define (exists vars body)
   (quantified 'exists vars body))
-
-
