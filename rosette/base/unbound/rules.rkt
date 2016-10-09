@@ -54,13 +54,12 @@
 
 (define current-head (make-parameter #f))
 (define current-args (make-parameter #f))
-(define current-bound-vars (make-parameter (list)))
+(define current-bound-vars (make-parameter (set)))
 (define current-premises (make-parameter (list)))
 (define current-rules (make-parameter (list)))
 
 (define (add-bound-var var)
-  (unless (member var (current-bound-vars))
-    (current-bound-vars (cons var (current-bound-vars)))))
+  (current-bound-vars (set-add (current-bound-vars) var)))
 
 (define (add-premise premise)
   (current-premises (cons premise (current-premises))))
@@ -103,7 +102,7 @@
     (current-intermediate-vars-count
      (add1 (current-intermediate-vars-count)))))
 
-(define common-bound-vars (make-parameter #f))
+(define common-bound-vars (make-parameter (make-hash)))
 (define common-bound-vars-count (make-parameter 0))
 
 (define (fresh-bound-var id type)
@@ -119,7 +118,7 @@
         (append common-vars insufficient-vars))))
 
 (define (common-vars-substitution bound-vars)
-  (let* ([grouped-vars (group-by type-of bound-vars)]
+  (let* ([grouped-vars (group-by type-of (set->list bound-vars))]
          [grouped-vars (for/hash ([group grouped-vars]
                                   #:when (not (empty? group)))
                          (values (type-of (car group)) group))])
@@ -144,7 +143,9 @@
 ;; ----------------- Symbolic term -> Horn clauses ----------------- ;;
 
 (define (eval/horn t)
-  (parameterize ([current-intermediate-vars-count (current-intermediate-vars-count)])
+  (parameterize ([current-intermediate-vars-count (current-intermediate-vars-count)]
+                 [current-bound-vars (current-bound-vars)]
+                 [current-premises (current-premises)])
     (term->horn-clauses #t t)))
 
 (define (term->rules t)
@@ -210,11 +211,13 @@
 ;; ----------------- Post-processing ----------------- ;;
 
 (define (horn-clause->implication clause)
-  (expression @=>
-              (apply expression
-                     `(, @&&
-                       ,@(flatten (horn-clause-premises clause))))
-              (horn-clause-conclusion clause)))
+  (if (empty? (horn-clause-premises clause))
+      (horn-clause-conclusion clause)
+      (expression @=>
+                  (apply expression
+                         `(, @&&
+                           ,@(flatten (horn-clause-premises clause))))
+                  (horn-clause-conclusion clause))))
 
 (define (rule->assertion clause)
   (if (horn-clause? clause)
@@ -234,8 +237,5 @@
 
 (define-syntax rules->assertions
   (syntax-rules ()
-    [(_ rules)
-     (parameterize ([common-bound-vars (make-hash)]
-                    [common-bound-vars-count 0])
-       (map rule->assertion rules))]
+    [(_ rules) (map rule->assertion rules)]
     [(_) (rules->assertions (current-rules))]))

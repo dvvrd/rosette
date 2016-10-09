@@ -31,21 +31,21 @@
             [conclusions (eval/asserts (thunk post))]
             [queries (assertions->horn-clause premises conclusions fail-rel)]
             [rules (append (rules->assertions) (rules->assertions queries))])
-       (dbg "FINAL RULES:\n~a" rules)
+;       (dbg "FINAL RULES:\n~a" rules)
        (∃-solve rules fail-rel))]
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
     [(_ post) (verify/unbound #:assume #t #:guarantee post)]))
 
 (define (assertions->horn-clause premises conclusions query)
   (let* ([premises (apply append (map term->rules premises))]
-         [premises-bound-vars (apply append (map horn-clause-bound-vars premises))]
+         [premises-bound-vars (apply set-union (cons (set) (map horn-clause-bound-vars premises)))]
          [premises-premises (apply append (map horn-clause-premises premises))]
          [premises-conclusions (map horn-clause-conclusion premises)]
          [premises (append premises-premises premises-conclusions)]
          [conclusions-clauses (apply append (map term->rules conclusions))])
     (map (λ (conclusion)
            (horn-clause
-            (append premises-bound-vars (horn-clause-bound-vars conclusion))
+            (set-union premises-bound-vars (horn-clause-bound-vars conclusion))
             (append premises (horn-clause-premises conclusion) (list (! (horn-clause-conclusion conclusion))))
             query)) conclusions-clauses)))
 

@@ -111,7 +111,8 @@
      (server-write
       (z3-server self)
       (begin (encode-rules (z3-env self) (z3-rules self))
-             (query (ref! (z3-env self) q))))
+             (query (ref! (z3-env self) q))
+             (check-sat))) ; TODO: understand why it hangs without check-sat
      (solver-clear-stacks! self)
      (server-read (z3-server self) (decode env)))]
   )
