@@ -64,8 +64,8 @@
         [bw
          (parameterize ([term-cache (hash-copy (term-cache))])
            (define fmap (finitize rules bw))
-           (solver-add-rules solver (for/list ([rule rules]) (hash-ref fmap rules)))
-             (let ([fsol (complete (solver-query solver) fmap)])
+           (solver-add-rules solver (for/list ([rule rules]) (hash-ref fmap rule)))
+             (let ([fsol (complete (solver-query solver query) fmap)])
                (unfinitize fsol fmap)))]
         [else
          (solver-add-rules solver rules)

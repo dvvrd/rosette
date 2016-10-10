@@ -2,7 +2,6 @@
 
 (require "../rosette/base/core/term.rkt")
 
-(current-bitwidth #f)
 (define-symbolic m integer?)
 
 (define/unbound (fib n) (~> integer? integer?)
