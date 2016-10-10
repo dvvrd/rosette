@@ -12,8 +12,7 @@
 
 (provide solve/unbound verify/unbound current-horn-solver)
 
-;(define current-horn-solver (make-parameter (spacer)))
-(define current-horn-solver (make-parameter (current-solver)))
+(define current-horn-solver (make-parameter (spacer)))
 
 ; Same as usual rosette "solve", but uses smt fixedpoint engine for
 ; infering recursive functions invariants without their evaluation.
