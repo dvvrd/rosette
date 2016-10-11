@@ -12,4 +12,3 @@
     (if (< n (- k 1)) p (if (< n k) p (+ (fib (- n p)) (fib (- n k)))))))
 
 (verify/unbound (assert (> (fib m) 0)))
-

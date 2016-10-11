@@ -3,24 +3,24 @@
 (require
   racket/syntax
   (only-in "../core/term.rkt"
-           define-operator constant expression
+           define-operator constant constant? expression
            type-of @app solvable-domain solvable-range)
   (only-in "../core/polymorphic.rkt"
            ite ite* guarded)
   (only-in "../core/bool.rkt" @boolean? @! @=> @&&)
   (only-in "../core/function.rkt" ~>))
 
-(provide dbg @app @rel @var @rule
-         (struct-out horn-clause)
+(provide dbg @app (struct-out horn-clause)
          register-solvable-function
          rules->assertions term->rules eval/horn
-         current-head current-args)
+         current-head current-args
+         bound-var? relation?)
 
 (define-syntax-rule (dbg ft args ...)
   (displayln (format ft (if (syntax? args) (syntax->datum args) args) ...) (current-error-port)))
 ;  void)
 
-;; ----------------- Horn clause and operators ----------------- ;;
+;; ----------------- Horn clause ----------------- ;;
 
 (struct horn-clause (bound-vars premises conclusion)
   #:methods gen:custom-write
@@ -35,20 +35,42 @@
               (horn-clause-premises self)
               (horn-clause-conclusion self)))])
 
-; Defines an operator that simply does what its only argument does.
-; It is useful for bringing some more info to datalog format printer.
-; Operators declared by this macro intended only for internal use
-; and should not be called by client code.
-(define-syntax (define-wrapper-operator stx)
-  (with-syntax ([(_ id) stx])
-    #'(define-operator id
-        #:identifier 'id
-        #:range (λ (expr) (type-of expr))
-        #:unsafe (λ (expr) expr))))
+(define (horn-clause->implication clause)
+  (match (horn-clause-premises clause)
+    [(list) clause]
+    [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
+    [_ (expression @=>
+                   (apply expression
+                          `(, @&&
+                            ,@(flatten (horn-clause-premises clause))))
+                   (horn-clause-conclusion clause))]))
 
-(define-wrapper-operator @rel)
-(define-wrapper-operator @var)
-(define-wrapper-operator @rule)
+(define (rule->assertion clause)
+  (if (horn-clause? clause)
+      (replace-constants
+       (common-vars-substitution (horn-clause-bound-vars clause))
+       (horn-clause->implication clause))
+      clause))
+
+(define (enrich rules additional-bound-vars additional-premises)
+  (for/list ([rule rules])
+    (horn-clause (set-union additional-bound-vars (horn-clause-bound-vars rule))
+                 (append additional-premises (horn-clause-premises rule))
+                 (horn-clause-conclusion rule))))
+
+(define-syntax rules->assertions
+  (syntax-rules ()
+    [(_ rules additional-bound-vars additional-premises) (map rule->assertion (enrich rules additional-bound-vars additional-premises))]
+    [(_ additional-bound-vars additional-premises) (rules->assertions (current-rules) additional-bound-vars additional-premises)]))
+
+(define (replace-constants subst t)
+  (match t
+    [(expression op args ...)
+     (let ([args (map (curry replace-constants subst) args)])
+       (apply expression `(,op ,@args)))]
+    [(? relation?) t]
+    [(constant _ _) (hash-ref subst t t)]
+    [_ t]))
 
 ;; ----------------- Caches and parameters ----------------- ;;
 
@@ -57,6 +79,10 @@
 (define current-bound-vars (make-parameter (set)))
 (define current-premises (make-parameter (list)))
 (define current-rules (make-parameter (list)))
+(define current-intermediate-vars-count (make-parameter 0))
+
+(define common-bound-vars (make-parameter (make-hash)))
+(define common-bound-vars-count (make-parameter 0))
 
 (define (add-bound-var var)
   (current-bound-vars (set-add (current-bound-vars) var)))
@@ -89,12 +115,10 @@
 
 (define (function->relation f)
   (hash-ref! relations-cache f
-             (thunk
-              (expression @rel
-                          (constant (syntax->datum (format-id #f "~a°" (format "~a" f)))
-                                    (function-type->relational-type (type-of f)))))))
+             (thunk (fresh-relation f))))
 
-(define current-intermediate-vars-count (make-parameter 0))
+(define bound-var-suffix "$<bound-var>")
+(define relation-suffix "°")
 
 (define (fresh-intermediate-var prefix)
   (begin0
@@ -102,11 +126,18 @@
     (current-intermediate-vars-count
      (add1 (current-intermediate-vars-count)))))
 
-(define common-bound-vars (make-parameter (make-hash)))
-(define common-bound-vars-count (make-parameter 0))
-
 (define (fresh-bound-var id type)
-  (expression @var (constant (format-id #f "x!~a" (number->string (add1 id))) type)))
+  (constant (format-id #f "x!~a~a" (number->string (add1 id)) bound-var-suffix) type))
+
+(define (fresh-relation f)
+  (constant (string->symbol (format"~a~a" f relation-suffix))
+            (function-type->relational-type (type-of f))))
+
+(define (bound-var? v)
+  (and (constant? v) (string-suffix? (format "~a" v) bound-var-suffix)))
+
+(define (relation? f)
+  (and (constant? f) (string-suffix? (format "~a" f) relation-suffix) (equal? (solvable-range (type-of f)) @boolean?)))
 
 (define (fill-in-insufficient common-vars n type)
   (if (<= n (length common-vars))
@@ -207,42 +238,3 @@
 ; Transforms (@integer? ~> @integer?) to (@integer? ~> @integer? ~> @boolean?)
 (define (function-type->relational-type t)
   (apply ~> `(,@(solvable-domain t) ,(solvable-range t) , @boolean?)))
-
-;; ----------------- Post-processing ----------------- ;;
-
-(define (horn-clause->implication clause)
-  (match (horn-clause-premises clause)
-    [(list) clause]
-    [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
-    [_ (expression @=>
-                   (apply expression
-                          `(, @&&
-                            ,@(flatten (horn-clause-premises clause))))
-                   (horn-clause-conclusion clause))]))
-
-(define (rule->assertion clause)
-  (if (horn-clause? clause)
-      (replace-constants
-       (common-vars-substitution (horn-clause-bound-vars clause))
-       (expression @rule (horn-clause->implication clause)))
-      clause))
-
-(define (enrich rules additional-bound-vars additional-premises)
-  (for/list ([rule rules])
-    (horn-clause (set-union additional-bound-vars (horn-clause-bound-vars rule))
-                 (append additional-premises (horn-clause-premises rule))
-                 (horn-clause-conclusion rule))))
-
-(define-syntax rules->assertions
-  (syntax-rules ()
-    [(_ rules additional-bound-vars additional-premises) (map rule->assertion (enrich rules additional-bound-vars additional-premises))]
-    [(_ additional-bound-vars additional-premises) (rules->assertions (current-rules) additional-bound-vars additional-premises)]))
-
-(define (replace-constants subst t)
-  (match t
-    [(expression (== @rel) f) t]
-    [(expression op args ...)
-     (let ([args (map (curry replace-constants subst) args)])
-       (apply expression `(,op ,@args)))]
-    [(constant _ _) (hash-ref subst t t)]
-    [_ t]))

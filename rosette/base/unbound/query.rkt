@@ -5,7 +5,7 @@
   "../../query/finitize.rkt"
   "../../solver/solver.rkt" "../../solver/horn-solver.rkt"
   (only-in "../../query/core.rkt" eval/asserts)
-  (only-in "../core/bool.rkt" ! || @boolean?)
+  (only-in "../core/bool.rkt" ! || @boolean? @&& @=>)
   (only-in "../../query/form.rkt" solve current-solver)
   (only-in "../../solver/smt/spacer.rkt" spacer)
   (only-in "../core/term.rkt" term-cache constant expression @app))
@@ -25,7 +25,7 @@
 (define-syntax verify/unbound
   (syntax-rules ()
     [(_ #:assume pre #:guarantee post)
-     (let*-values ([(fail-rel) (expression @rel (constant 'fail° @boolean?))]
+     (let*-values ([(fail-rel) (constant 'fail° @boolean?)]
                    [(premises) (eval/asserts (thunk pre))]
                    [(conclusions) (eval/asserts (thunk post))]
                    [(premises-vars premises) (premises-union premises)]
@@ -52,6 +52,31 @@
             query))
          conclusions-clauses)))
 
+(define (map-fold proc init lst)
+  (match lst
+    [`() (values init '())]
+    [`(,h . ,t) (let*-values ([(head-acc head) (proc h init)]
+                              [(acc tail) (map-fold proc head-acc t)])
+                    (values acc (cons head tail)))]))
+
+(define (finitize-rule bw rule fmap)
+  (match rule
+    [(expression (== @=>) (expression (== @&&) premises ...) conclusion)
+     (let* ([fmap (finitize (cons conclusion premises) bw fmap)]
+            [fpremises (map (curry hash-ref fmap) premises)]
+            [fconclusion (hash-ref fmap conclusion)])
+       (values fmap (expression @=> (apply expression `(, @&& ,@fpremises)) fconclusion)))]
+    [(expression (== @=>) premise conclusion)
+     (let* ([fmap (finitize (list premise conclusion) bw fmap)]
+            [fpremise (hash-ref fmap premise)]
+            [fconclusion (hash-ref fmap conclusion)])
+       (values fmap (expression @=> fpremise fconclusion)))]
+    [_ (hash-ref (finitize rule bw fmap) rule)]))
+
+; Simply calling (finitize rules) breaks rules structure, so we deconstruct rules, finitize and construct back.
+(define (finitize-rules rules bw)
+  (map-fold (curry finitize-rule bw) (make-hash) rules))
+
 ; Searches for a model, if any, for the conjunction
 ; of the given formulas, using the provided solver and
 ; bitwidth. The solver and the bitwidth are, by default,
@@ -67,10 +92,12 @@
       (cond
         [bw
          (parameterize ([term-cache (hash-copy (term-cache))])
-           (define fmap (finitize rules bw))
-           (solver-add-rules solver (for/list ([rule rules]) (hash-ref fmap rule)))
+           (let-values ([(fmap rules) (finitize-rules rules bw)])
+             (solver-add-rules solver rules)
+             ; TODO: Rosette engine generates multiple requests to solver to
+             ; fit racket integer semantics. What to do here?
              (let ([fsol (complete (solver-query solver query) fmap)])
-               (unfinitize fsol fmap)))]
+               (unfinitize fsol fmap))))]
         [else
          (solver-add-rules solver rules)
          (solver-query solver query)]))

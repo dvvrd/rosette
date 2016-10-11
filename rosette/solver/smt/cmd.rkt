@@ -2,7 +2,7 @@
 
 (require (only-in "smtlib2.rkt" assert minimize maximize
                   check-sat get-model get-unsat-core
-                  read-solution true false)
+                  read-solution true false rule)
          "env.rkt" "enc.rkt"
          (only-in "../../base/core/term.rkt" constant? term-type solvable-default)
          (only-in "../../base/core/function.rkt" fv function? function-domain function-range)
@@ -50,8 +50,8 @@
 ; be augmented, if needed, with additional declarations and
 ; definitions.  This procedure will not emit any other commands.
 (define (encode-rules env rules)
-  (for ([rule rules])
-    (enc rule env)))
+  (for ([r rules])
+    (rule (enc r env))))
 
 ; Generates an assertion label for a declared or defined SMT id by prefixing that 
 ; id with 'a'.  This will generate unique ids, since none of the declared or defined 

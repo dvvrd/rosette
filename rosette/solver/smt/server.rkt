@@ -1,7 +1,6 @@
 #lang racket
 
 (require racket/runtime-path)
-(require "../../../playground/trace.rkt")
 
 (provide server server-start server-running? server-shutdown 
          server-write server-read server-error)
@@ -34,8 +33,7 @@
   (set-server-process! s process)
   (set-server-stdout! s stdout)
   ; Temporary commented out for debugging, will be filtered out from git history
-  ; (set-server-stdin! s stdin)
-  (set-server-stdin! s (multiplex-output-port stdin (trace-port "z3Trace")))
+  (set-server-stdin! s stdin)
   (set-server-stderr! s stderr))
 
 ; Returns true if the given server has been initialized and is running.
