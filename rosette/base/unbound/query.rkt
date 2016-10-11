@@ -25,28 +25,32 @@
 (define-syntax verify/unbound
   (syntax-rules ()
     [(_ #:assume pre #:guarantee post)
-     (let* ([fail-rel (expression @rel (constant 'fail° @boolean?))]
-            [premises (eval/asserts (thunk pre))]
-            [conclusions (eval/asserts (thunk post))]
-            [queries (assertions->horn-clause premises conclusions fail-rel)]
-            [rules (append (rules->assertions) (rules->assertions queries))])
-;       (dbg "FINAL RULES:\n~a" rules)
+     (let*-values ([(fail-rel) (expression @rel (constant 'fail° @boolean?))]
+                   [(premises) (eval/asserts (thunk pre))]
+                   [(conclusions) (eval/asserts (thunk post))]
+                   [(premises-vars premises) (premises-union premises)]
+                   [(queries) (conclusions-union conclusions fail-rel)]
+                   [(rules) (append (rules->assertions premises-vars premises) (rules->assertions queries premises-vars premises))])
+       ;(dbg "FINAL RULES:\n~a" rules)
        (∃-solve rules fail-rel))]
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
     [(_ post) (verify/unbound #:assume #t #:guarantee post)]))
 
-(define (assertions->horn-clause premises conclusions query)
-  (let* ([premises (apply append (map term->rules premises))]
-         [premises-bound-vars (apply set-union (cons (set) (map horn-clause-bound-vars premises)))]
-         [premises-premises (apply append (map horn-clause-premises premises))]
-         [premises-conclusions (map horn-clause-conclusion premises)]
-         [premises (append premises-premises premises-conclusions)]
-         [conclusions-clauses (apply append (map term->rules conclusions))])
+(define (premises-union assertions)
+  (let* ([clauses (apply append (map term->rules assertions))]
+         [bound-vars (apply set-union (cons (set) (map horn-clause-bound-vars clauses)))]
+         [premises (apply append (map horn-clause-premises clauses))]
+         [conclusions (map horn-clause-conclusion clauses)])
+    (values bound-vars (append premises conclusions))))
+
+(define (conclusions-union conclusions query)
+  (let ([conclusions-clauses (apply append (map term->rules conclusions))])
     (map (λ (conclusion)
            (horn-clause
-            (set-union premises-bound-vars (horn-clause-bound-vars conclusion))
-            (append premises (horn-clause-premises conclusion) (list (! (horn-clause-conclusion conclusion))))
-            query)) conclusions-clauses)))
+            (horn-clause-bound-vars conclusion)
+            (append (horn-clause-premises conclusion) (list (! (horn-clause-conclusion conclusion))))
+            query))
+         conclusions-clauses)))
 
 ; Searches for a model, if any, for the conjunction
 ; of the given formulas, using the provided solver and

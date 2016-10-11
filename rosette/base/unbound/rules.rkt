@@ -28,9 +28,9 @@
      (fprintf port
               "∀(~a) [=> ~a ~a]\n"
               (string-join
-               (map
-                (curry format "~a")
-                (horn-clause-bound-vars self))
+               (set-map
+                (horn-clause-bound-vars self)
+                (curry format "~a"))
                ", ")
               (horn-clause-premises self)
               (horn-clause-conclusion self)))])
@@ -211,13 +211,14 @@
 ;; ----------------- Post-processing ----------------- ;;
 
 (define (horn-clause->implication clause)
-  (if (empty? (horn-clause-premises clause))
-      (horn-clause-conclusion clause)
-      (expression @=>
-                  (apply expression
-                         `(, @&&
-                           ,@(flatten (horn-clause-premises clause))))
-                  (horn-clause-conclusion clause))))
+  (match (horn-clause-premises clause)
+    [(list) clause]
+    [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
+    [_ (expression @=>
+                   (apply expression
+                          `(, @&&
+                            ,@(flatten (horn-clause-premises clause))))
+                   (horn-clause-conclusion clause))]))
 
 (define (rule->assertion clause)
   (if (horn-clause? clause)
@@ -225,6 +226,17 @@
        (common-vars-substitution (horn-clause-bound-vars clause))
        (expression @rule (horn-clause->implication clause)))
       clause))
+
+(define (enrich rules additional-bound-vars additional-premises)
+  (for/list ([rule rules])
+    (horn-clause (set-union additional-bound-vars (horn-clause-bound-vars rule))
+                 (append additional-premises (horn-clause-premises rule))
+                 (horn-clause-conclusion rule))))
+
+(define-syntax rules->assertions
+  (syntax-rules ()
+    [(_ rules additional-bound-vars additional-premises) (map rule->assertion (enrich rules additional-bound-vars additional-premises))]
+    [(_ additional-bound-vars additional-premises) (rules->assertions (current-rules) additional-bound-vars additional-premises)]))
 
 (define (replace-constants subst t)
   (match t
@@ -234,8 +246,3 @@
        (apply expression `(,op ,@args)))]
     [(constant _ _) (hash-ref subst t t)]
     [_ t]))
-
-(define-syntax rules->assertions
-  (syntax-rules ()
-    [(_ rules) (map rule->assertion rules)]
-    [(_) (rules->assertions (current-rules))]))
