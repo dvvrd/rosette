@@ -71,7 +71,9 @@
             [fpremise (hash-ref fmap premise)]
             [fconclusion (hash-ref fmap conclusion)])
        (values fmap (expression @=> fpremise fconclusion)))]
-    [_ (hash-ref (finitize rule bw fmap) rule)]))
+    [_
+     (let ([fmap (finitize (list rule) bw fmap)])
+       (values fmap (hash-ref fmap rule)))]))
 
 ; Simply calling (finitize rules) breaks rules structure, so we deconstruct rules, finitize and construct back.
 (define (finitize-rules rules bw)

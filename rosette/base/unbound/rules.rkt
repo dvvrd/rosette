@@ -37,7 +37,7 @@
 
 (define (horn-clause->implication clause)
   (match (horn-clause-premises clause)
-    [(list) clause]
+    [(list) (horn-clause-conclusion clause)]
     [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
     [_ (expression @=>
                    (apply expression
