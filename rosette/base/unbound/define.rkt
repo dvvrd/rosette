@@ -2,7 +2,7 @@
 
 (require
   (for-syntax racket syntax/parse)
-  (only-in "../core/term.rkt" constant solvable-domain)
+  (only-in "../core/term.rkt" constant constant? solvable-domain term-cache)
   (only-in "../form/define.rkt" define-symbolic)
   "rules.rkt")
 
@@ -23,9 +23,12 @@
                         (set-box! arg-constants (list args ...))
                         body
                         body-rest ...)]
-                [term (impl)]) ; TODO: speculate here?
+                [term-cache-snapshot (hash-copy (term-cache))]
+                [term (impl)] ; TODO: speculate here?
+                [scoped-constants (hash-values-diff constant? (term-cache) term-cache-snapshot)])
            (parameterize ([current-head head]
-                          [current-args (unbox arg-constants)])
+                          [current-args (unbox arg-constants)]
+                          [current-scope (set-subtract scoped-constants (list->set (unbox arg-constants)))])
              (eval/horn term))
            head)))]))
 
@@ -34,3 +37,8 @@
     (if (< i (length domain))
         (list-ref domain i)
         (error 'define "Too many arguments!"))))
+
+(define (hash-values-diff filter-func hash1 hash2)
+  (let ([values1 (apply set (filter filter-func (hash-values hash1)))]
+        [values2 (apply set (filter filter-func (hash-values hash2)))])
+    (set-subtract values1 values2)))

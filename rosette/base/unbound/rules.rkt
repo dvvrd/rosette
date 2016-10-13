@@ -4,7 +4,7 @@
   racket/syntax
   (only-in "../core/term.rkt"
            define-operator constant constant? expression
-           type-of @app solvable-domain solvable-range)
+           type-of @app solvable-domain solvable-range type-applicable?)
   (only-in "../core/polymorphic.rkt"
            ite ite* guarded)
   (only-in "../core/bool.rkt" @boolean? @! @=> @&&)
@@ -13,7 +13,7 @@
 (provide dbg @app (struct-out horn-clause)
          register-solvable-function
          rules->assertions term->rules eval/horn
-         current-head current-args
+         current-head current-args current-scope
          bound-var? relation?)
 
 (define-syntax-rule (dbg ft args ...)
@@ -26,7 +26,7 @@
   #:methods gen:custom-write
   [(define (write-proc self port mode)
      (fprintf port
-              "∀(~a) [=> ~a ~a]\n"
+              "∀(~a) [=> ~a ~a]"
               (string-join
                (set-map
                 (horn-clause-bound-vars self)
@@ -46,6 +46,7 @@
                    (horn-clause-conclusion clause))]))
 
 (define (rule->assertion clause)
+  (dbg "Rule: ~a" clause)
   (if (horn-clause? clause)
       (replace-constants
        (common-vars-substitution (horn-clause-bound-vars clause))
@@ -80,6 +81,7 @@
 (define current-premises (make-parameter (list)))
 (define current-rules (make-parameter (list)))
 (define current-intermediate-vars-count (make-parameter 0))
+(define current-scope (make-parameter (set)))
 
 (define common-bound-vars (make-parameter (make-hash)))
 (define common-bound-vars-count (make-parameter 0))
@@ -92,20 +94,16 @@
 
 ; Takes conclusion and constructs horn-clause using current traversal context.
 (define (add-rule value)
-  (let* ([conclusion
-          (if (current-head)
-              (apply expression
-                     `(, @app
-                       , (function->relation (current-head))
-                       ,@(current-args)
-                       ,value))
-              value)]
+  (let* ([conclusion (if (current-head)
+                         (function-application->relation (current-head) (current-args) value)
+                         value)]
          [resulting-clause (horn-clause (current-bound-vars) (current-premises) conclusion)])
     (unless (member resulting-clause (current-rules))
       (current-rules (cons resulting-clause (current-rules))))))
 
 (define solvable-functions-cache (mutable-set))
 (define relations-cache (make-hash))
+(define global-state-dependencies (make-hash))
 
 (define (solvable-function? f)
   (set-member? solvable-functions-cache f))
@@ -113,9 +111,11 @@
 (define (register-solvable-function f)
   (set-add! solvable-functions-cache f))
 
-(define (function->relation f)
-  (hash-ref! relations-cache f
-             (thunk (fresh-relation f))))
+(define (function-application->relation f args ret)
+  (let* ([rel (hash-ref! relations-cache f
+                        (thunk (fresh-relation f)))]
+         [global-dependencies (hash-ref global-state-dependencies rel)])
+    (apply expression `(, @app ,rel ,@global-dependencies ,@args ,ret))))
 
 (define bound-var-suffix "$<bound-var>")
 (define relation-suffix "°")
@@ -130,14 +130,34 @@
   (constant (format-id #f "x!~a~a" (number->string (add1 id)) bound-var-suffix) type))
 
 (define (fresh-relation f)
-  (constant (string->symbol (format"~a~a" f relation-suffix))
-            (function-type->relational-type (type-of f))))
+  (let* ([global-dependencies (filter global-var? (set->list (current-bound-vars)))]
+         [domain-extension (map type-of global-dependencies)]
+         [result (constant (string->symbol (format "~a~a" f relation-suffix))
+                           (function-type->relational-type domain-extension (type-of f)))])
+    (hash-set! global-state-dependencies result global-dependencies)
+    result))
 
 (define (bound-var? v)
   (and (constant? v) (string-suffix? (format "~a" v) bound-var-suffix)))
 
 (define (relation? f)
   (and (constant? f) (string-suffix? (format "~a" f) relation-suffix) (equal? (solvable-range (type-of f)) @boolean?)))
+
+(define (argument? v)
+  (member v (current-args)))
+
+(define (local-var? v)
+  (set-member? (current-scope) v))
+
+(define (intermediate-var? v)
+  (regexp-match #rx"^ε[0-9]+$" (format "~a" v)))
+
+(define (global-var? v)
+  (and (constant? v)
+       (not (or (argument? v)
+                (intermediate-var? v)
+                (type-applicable? (type-of v))
+                (local-var? v)))))
 
 (define (fill-in-insufficient common-vars n type)
   (if (<= n (length common-vars))
@@ -173,10 +193,19 @@
 
 ;; ----------------- Symbolic term -> Horn clauses ----------------- ;;
 
+(define (eval/bound-vars t)
+  (match t
+    [(expression op args ...)
+     (for ([arg args])
+       (eval/bound-vars arg))]
+    [(constant _ _) (add-bound-var t)]
+    [_ (void)]))
+
 (define (eval/horn t)
   (parameterize ([current-intermediate-vars-count (current-intermediate-vars-count)]
                  [current-bound-vars (current-bound-vars)]
                  [current-premises (current-premises)])
+    (eval/bound-vars t)
     (term->horn-clauses #t t)))
 
 (define (term->rules t)
@@ -191,10 +220,9 @@
             [result
              (if (solvable-function? f)
                  (let* ([id (fresh-intermediate-var 'ε)]
-                        [ε (constant id (solvable-range (type-of f)))]
-                        [rel (function->relation f)])
+                        [ε (constant id (solvable-range (type-of f)))])
                    (add-bound-var ε)
-                   (add-premise (apply expression `(, @app ,rel ,@args ,ε)))
+                   (add-premise (function-application->relation f args ε))
                    ε)
                  (expression @app f args))])
        (cond [tail-position? (add-rule result)])
@@ -202,12 +230,10 @@
     [(expression (== ite) test then else)
      (let* ([test (term->horn-clauses #f test)]
             [then
-             (parameterize ([current-premises (cons test (current-premises))]
-                            [current-bound-vars (current-bound-vars)])
+             (parameterize ([current-premises (cons test (current-premises))])
                (term->horn-clauses tail-position? then))]
             [else
-             (parameterize ([current-premises (cons (@! test) (current-premises))]
-                            [current-bound-vars (current-bound-vars)])
+             (parameterize ([current-premises (cons (@! test) (current-premises))])
                (term->horn-clauses tail-position? else))])
        (expression ite test then else))]
     [(expression (== ite*) gvs)
@@ -215,8 +241,7 @@
                  (map (λ (gv)
                         (match-let* ([(guarded g v) gv]
                                      [g (term->horn-clauses #f g)])
-                          (parameterize ([current-premises (cons g (current-premises))]
-                                         [current-bound-vars (current-bound-vars)])
+                          (parameterize ([current-premises (cons g (current-premises))])
                             (term->horn-clauses tail-position? v))))
                       gvs))]
     [(expression op args ...)
@@ -225,7 +250,6 @@
        (cond [tail-position? (add-rule result)])
        result)]
     [(constant _ _)
-     (add-bound-var t)
      (cond [tail-position? (add-rule t)])
      t]
     [_
@@ -236,5 +260,5 @@
   (map (curry term->horn-clauses #f) ts))
 
 ; Transforms (@integer? ~> @integer?) to (@integer? ~> @integer? ~> @boolean?)
-(define (function-type->relational-type t)
-  (apply ~> `(,@(solvable-domain t) ,(solvable-range t) , @boolean?)))
+(define (function-type->relational-type additional-domain t)
+  (apply ~> `(,@additional-domain ,@(solvable-domain t) ,(solvable-range t) , @boolean?)))
