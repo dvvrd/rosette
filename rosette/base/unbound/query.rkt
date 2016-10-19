@@ -48,13 +48,13 @@
     (map (λ (conclusion)
            (horn-clause
             (horn-clause-bound-vars conclusion)
-            (append (horn-clause-premises conclusion) (list (! (horn-clause-conclusion conclusion))))
+            (set-add (horn-clause-premises conclusion) (! (horn-clause-conclusion conclusion)))
             query))
          conclusions-clauses)))
 
 (define (map-fold proc init lst)
   (match lst
-    [`() (values init '())]
+    ['() (values init '())]
     [`(,h . ,t) (let*-values ([(head-acc head) (proc h init)]
                               [(acc tail) (map-fold proc head-acc t)])
                     (values acc (cons head tail)))]))

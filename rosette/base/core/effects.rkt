@@ -3,7 +3,7 @@
 (require 
  (for-syntax racket))
 
-(provide speculate speculate* apply! location=? (rename-out [state-val location-final-value]))
+(provide speculate speculate* speculate/unsafe apply! location=? (rename-out [state-val location-final-value]) location-current-value)
 
 ; The env parameter stores an eq? based hash-map which we use to keep
 ; track of boxes, vectors and structs that are mutated.  
@@ -60,6 +60,18 @@
     ; encapsulation of the state changes
     (with-handlers ([exn:fail? rollback/suppress])
       (values body (rollback/collect)))))
+
+; Permanently turns on speculation mode. All state mutations in speculation mode
+; are tracked. Unlike speculate speculate/unsafe does not perform exception handling
+; and state unrolling.
+;
+; The result of speculate/unsafe is a lambda that returns encapsulated current state
+; (just like the speculate does) when called.
+(define-syntax-rule (speculate/unsafe)
+  (begin
+    (env (make-custom-hash eq? eq-hash-code))
+    (lambda ()
+      (collect void))))
 
 ; A function that handles calls to structure mutators.  
 (define apply! 
@@ -145,7 +157,7 @@
 ; their initial values, without encapsulating the final state updates.
 ; Returns (values #f #f).  The error argument is ignored.
 (define (rollback/suppress err)
-  ;(printf "\n\nERROR: ~a\n\n" err)
+  (printf "\n\nERROR: ~a\n\n" err)
   (unless (zero? (dict-count (env)))
     (for* ([states (in-dict-values (env))]
            [s (if (list? states) (in-list states) (in-dict-values states))])
@@ -158,19 +170,34 @@
 (define (rollback/encapsulate)
   (if (zero? (dict-count (env)))
       void
-      (let ([updates (rollback/collect)])
-        (lambda (proc)
-          (for ([s (in-list updates)])
-            (s proc))))))
+      (encapsulate (rollback/collect))))
 
 ; Reverts the state of set! variables and struct fields to
 ; their initial values, and returns a list that contains a 
 ; copy of the final state of each location bound in the current 
 ; environment.  
 (define (rollback/collect)
+  (collect state-rollback!))
+
+; Returns an encapsulation of the final state updates.
+(define (encapsulate updates)
+  (lambda (proc)
+    (for ([s (in-list updates)])
+      (s proc))))
+
+; Returns a list that contains a copy of the final state of each
+; location bound in the current environment.
+(define (collect proc)
   (for*/list ([states (in-dict-values (env))]
               [s (if (list? states) (in-list states) (in-dict-values states))])
     (let ([final (get (state-getter s) (state-receiver s) (state-location s))])
-      (state-rollback! s)                  ; roll-back
+      (proc s)                             ; process state
       (struct-copy state s [val final])))) ; collect final states
 
+; Returns current value written into a location of a given state
+; (no matter in what moment state was collected and what rollback data contains).
+(define (location-current-value state)
+  (let ([s (dict-ref (dict-ref (env)
+                               (state-receiver state))
+                     (state-location state))])
+    (get (state-getter s) (state-receiver s) (state-location s))))
