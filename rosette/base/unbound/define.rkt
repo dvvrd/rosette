@@ -37,7 +37,7 @@
                       state/after)
            (λ (args ...)
              (let ([constants (mutables:=symbolic!/memorize state/after)])
-               ;(dbg "Resulting constants: ~a" constants)
+               (dbg "Resulting constants: ~a" constants)
                (function-application->symbolic-constant head (list args ...) constants))))))]))
 
 (define (i-th-member-of-domain i type)
