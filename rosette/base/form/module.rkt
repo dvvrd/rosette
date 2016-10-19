@@ -98,7 +98,14 @@
    [var:id (list stx)]
    [(var:id ...) (syntax->list stx)]
    [(var:id ... . rest:id) (syntax->list #'(var ... rest))]))
-                
+
+; Boxes the given value and forces it to appear in state.
+; TODO: suspicious trick.
+(define (box/report v)
+  (let ([b (box v)])
+    (set-box! b (unbox b))
+    b))
+
 (define-for-syntax (box-mutated-vars form tbl)
   (define (mutated? id) (free-id-table-ref tbl id #f))
   (define (any-mutated? ids) (for/or ([id ids]) (mutated? id)))
@@ -116,7 +123,7 @@
                  [(vs) (formals->identifiers formals)])
       (cond [(any-mutated? vs)
              #`(#,@(for/list ([v vs] #:when (mutated? v))
-                     #`(set! #,v (box #,v)))
+                     #`(set! #,v (box/report #,v)))
                 #,@fs)]
             [pure? rest]
             [else fs])))
@@ -138,7 +145,7 @@
         (cond [(mutated? #'var) 
                (with-syntax ([(loc) (generate-temporaries #'(var))])
                  (quasisyntax/loc stx 
-                   (splicing-let ([loc (box #,e)])
+                   (splicing-let ([loc (box/report #,e)])
                      (define-syntax var
                        (syntax-id-rules (set!)
                          [(set! var val) (set-box! loc val)]
@@ -154,7 +161,7 @@
                  (quasisyntax/loc stx 
                    (splicing-let-values ([#,locs #,e])
                      #,@(for/list ([v vs][loc locs] #:when (mutated? v))
-                          #`(set! #,loc (box #,loc)))
+                          #`(set! #,loc (box/report #,loc)))
                      #,@(for/list ([v vs][loc locs])
                           (if (mutated? v)
                               #`(define-syntax #,v
@@ -174,7 +181,7 @@
                  (quasisyntax/loc stx
                    (let-values ([(var ...) e] ...)
                      #,@(for/list ([v vs] #:when (mutated? v))
-                          #`(set! #,v (box #,v))) 
+                          #`(set! #,v (box/report #,v)))
                      #,@fs)))]
               [(and pure-es? pure-fs?) stx]
               [else 
@@ -191,12 +198,12 @@
                  (quasisyntax/loc stx
                    (letrec-values ([#,vs (apply values (make-list #,(length vs) undefined))])
                      #,@(for/list ([v vs] #:when (mutated? v))
-                          #`(set! #,v (box #,v)))
+                          #`(set! #,v (box/report #,v)))
                      #,@(for/fold ([result '()]) ([ve ves] [e es])
                           `(,@result 
                             ,#`(set!-values #,ve #,e)
                             ,@(for/list ([v (syntax->list ve)] #:when (mutated? v))
-                                #`(set! #,v (box #,v)))))
+                                #`(set! #,v (box/report #,v)))))
                      #,@fs)))]
               [(and pure-es? pure-fs?) stx]
               [else 
@@ -213,12 +220,12 @@
                  (quasisyntax/loc stx  
                    (letrec-syntaxes+values stx-decls ([#,vs (apply values (make-list #,(length vs) undefined))])
                      #,@(for/list ([v vs] #:when (mutated? v))
-                          #`(set! #,v (box #,v)))
+                          #`(set! #,v (box/report #,v)))
                      #,@(for/fold ([result '()]) ([ve ves] [e es])  
                           `(,@result 
                             ,#`(set!-values #,ve #,e)
                             ,@(for/list ([v (syntax->list ve)] #:when (mutated? v))
-                                #`(set! #,v (box #,v)))))
+                                #`(set! #,v (box/report #,v)))))
                      #,@fs)))]
               [(and pure-es? pure-fs?) stx]
               [else 
