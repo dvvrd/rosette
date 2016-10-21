@@ -278,7 +278,7 @@
                  [current-scope scope]
                  [current-mutated-state mutations])
     (parameterize ([current-bound-vars (current-bound-vars)])
-      (for ([m mutations])
+      (for ([m (state->mutations mutations)])
         (eval/bound-vars m))
       (eval/bound-vars t)
       (hash-set! relations-cache head (fresh-relation head)))
