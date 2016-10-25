@@ -66,7 +66,7 @@
                             [(term state/after) (speculate/symbolized (impl))]
                             [(scoped-constants) (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot))]) ; TODO: make it more effective with splicing-let
                 (associate #'head state/after)
-                (set-up-read-dependencies head-constant term (unbox arg-constants) scoped-constants)
+                (set-up-read-dependencies head-constant term (unbox arg-constants) scoped-constants state/after)
                 (when (recursive? #'head)
                   (set!-values (term state/after) (speculate/symbolized (impl)))
                   (set! scoped-constants (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot)))

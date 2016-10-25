@@ -202,10 +202,12 @@
 (define (fresh-bound-var id type)
   (constant (format-id #f "x!~a~a" (number->string (add1 id)) bound-var-suffix) type))
 
-(define (set-up-read-dependencies f body args scope)
+(define (set-up-read-dependencies f body args scope mutations)
   (parameterize ([current-bound-vars (set)]
                  [current-args args]
                  [current-scope scope])
+    (for ([m (state->mutations mutations)])
+      (eval/bound-vars m))
     (eval/bound-vars body)
     (hash-set! read-dependencies f
                (map encapsulate
@@ -314,7 +316,10 @@
         (for/list ([m (current-mutations)])
           (term->rules m))))
 
-    (parameterize ([current-mutations-clauses mutations-clauses])
+    (parameterize ([current-mutations-clauses mutations-clauses]
+                   [current-bound-vars (current-bound-vars)])
+      (add-bound-vars (list->set (current-args)))
+      (add-bound-vars (list->set (original-read-dependencies (current-head))))
       (eval/horn t))))
 
 (define (eval/horn t)

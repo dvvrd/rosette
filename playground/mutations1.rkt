@@ -1,35 +1,5 @@
 #lang rosette/unbound
 
-;(define-symbolic m k integer?)
-;(define-symbolic n integer?)
-;
-;(define x 1)
-;(set! x 3)
-;(set! n 100500)
-;
-;(define (set-n a b)
-;  (set! a b))
-;
-;(define/unbound (f v) (~> integer? integer?)
-;  (printf "X: ~a\n" x)
-;  (printf "N: ~a\n" n)
-;  (set-n n v))
-;
-;(define-symbolic n1 integer?)
-;
-;n
-;
-;(if (< k 0)
-;    (set! n m)
-;    (set! n k))
-;
-;(if (< n1 0)
-;    (set! n1 m)
-;    (set! n1 k))
-;
-;n
-;n1
-
 (current-bitwidth #f)
 
 (define-symbolic n integer?)
