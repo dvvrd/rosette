@@ -157,7 +157,7 @@
 ; their initial values, without encapsulating the final state updates.
 ; Returns (values #f #f).  The error argument is ignored.
 (define (rollback/suppress err)
-  (printf "\n\nERROR: ~a\n\n" err)
+  ;(printf "\n\nERROR: ~a\n\n" err)
   (unless (zero? (dict-count (env)))
     (for* ([states (in-dict-values (env))]
            [s (if (list? states) (in-list states) (in-dict-values states))])
@@ -197,7 +197,4 @@
 ; Returns current value written into a location of a given state
 ; (no matter in what moment state was collected and what rollback data contains).
 (define (location-current-value state)
-  (let ([s (dict-ref (dict-ref (env)
-                               (state-receiver state))
-                     (state-location state))])
-    (get (state-getter s) (state-receiver s) (state-location s))))
+  (get (state-getter state) (state-receiver state) (state-location state)))

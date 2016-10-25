@@ -10,7 +10,7 @@
 (set! x 3)
 
 (define/unbound (fact n) (~> integer? integer?)
-  ;(set! x (add1 x))
+  (set! x (add1 x))
   (cond
     [(> n 0) (set! f (* f n))
              (fact (- n 1))]
