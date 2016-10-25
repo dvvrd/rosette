@@ -55,19 +55,17 @@
   (match (set->list (horn-clause-premises clause))
     [(list) (horn-clause-conclusion clause)]
     [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
-    [_ (expression @=>
-                   (apply expression
-                          `(, @&&
-                            ,@(set->list (horn-clause-premises clause))))
-                   (horn-clause-conclusion clause))]))
+    [_ (let ([premise (apply @&& (set->list (horn-clause-premises clause)))])
+         (and premise (expression @=> premise (horn-clause-conclusion clause))))]))
 
 (define (rule->assertion clause)
-  (dbg "Rule: ~a" clause)
   (cond
     [(horn-clause? clause)
-     (replace-constants
-      (common-vars-substitution (horn-clause-bound-vars clause))
-      (horn-clause->implication clause))]
+     (let ([result (replace-constants
+                    (common-vars-substitution (horn-clause-bound-vars clause))
+                    (horn-clause->implication clause))])
+       (when result (dbg "Rule: ~a" clause))
+       result)]
     [else clause]))
 
 (define (enrich rules additional-bound-vars additional-premises)
@@ -78,7 +76,10 @@
 
 (define-syntax rules->assertions
   (syntax-rules ()
-    [(_ rules additional-bound-vars additional-premises) (map rule->assertion (enrich rules additional-bound-vars additional-premises))]
+    [(_ rules additional-bound-vars additional-premises)
+     (filter identity
+             (map rule->assertion
+                  (enrich rules additional-bound-vars additional-premises)))]
     [(_ additional-bound-vars additional-premises) (rules->assertions (current-rules) additional-bound-vars additional-premises)]))
 
 (define (replace-constants subst t)

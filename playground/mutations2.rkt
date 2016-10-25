@@ -5,6 +5,7 @@
 (define-symbolic n integer?)
 
 (define x 0)
+; TODO: why is this solved so hard?
 (define/unbound (f n) (~> integer? integer?)
   (cond
     ; It was [(<= n 0) (set! x n) x] before, and the bug was found :)
