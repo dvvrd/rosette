@@ -39,9 +39,9 @@
 (define (premises-union assertions)
   (let* ([clauses (apply append (map term->rules assertions))]
          [bound-vars (apply set-union (cons (set) (map horn-clause-bound-vars clauses)))]
-         [premises (apply append (map horn-clause-premises clauses))]
+         [premises (apply set-union (cons (set) (map horn-clause-premises clauses)))]
          [conclusions (map horn-clause-conclusion clauses)])
-    (values bound-vars (append premises conclusions))))
+    (values bound-vars (set-union premises (list->set conclusions)))))
 
 (define (conclusions-union conclusions query)
   (let ([conclusions-clauses (apply append (map term->rules conclusions))])

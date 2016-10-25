@@ -37,13 +37,19 @@
 
 (define x 2)
 (set! f 1)
+(set! x 3)
 
 (define/unbound (fact n) (~> integer? integer?)
-  (set! x (add1 x))
+  ;(set! x (add1 x))
   (cond
-    [(> n 0) (set! f (* f n)) f]
-             ;(fact (- n 1))]
+    [(> n 0) (set! f (* f n))
+             (fact (- n 1))]
     [else f]))
+
+(define/unbound (g n) (~> integer? integer?)
+  (set! f (add1 f))
+  n)
+
 
 x
 f

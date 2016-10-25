@@ -1,11 +1,11 @@
 #lang racket
 
 (require (only-in "../core/effects.rkt" speculate/unsafe speculate* location-final-value location-current-value)
-         (only-in "../core/term.rkt" constant constant? type-of solvable?))
+         (only-in "../core/term.rkt" constant constant? type-of solvable? define-operator))
 
 (provide mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
-         speculate* create-rollback-point)
+         speculate* create-rollback-point mutated-app restore-symbolization)
 
 (define create-rollback-point (speculate/unsafe))
 
@@ -32,7 +32,7 @@
 ; overwritten by tracked constants.
 (define (mutables:=symbolic!/track state)
   (if (list? state)
-      (for/list ([s state])
+      (for ([s state])
         (let ([b (box #f)])
           (s (curry mutable:=symbolic!/report b))
           (let ([new-val (unbox b)])
@@ -78,4 +78,29 @@
 ; then symbolization->actual-value returns it back.
 (define (symbolization->actual-value constant)
   (hash-ref memorized-values constant
-            (thunk ((hash-ref tracked-values constant (thunk (thunk constant)))))))
+            (thunk
+             (if (hash-has-key? tracked-values constant)
+                 (let ([val ((hash-ref tracked-values constant))])
+                   (hash-ref memorized-values val val))
+                 constant))))
+
+(define (restore-symbolization state)
+  (if (list? state)
+      (for ([s state])
+        (s (λ (pre post) post)))
+      (state (λ (pre post) post))))
+
+; Just for debug, shorter suffixes
+(require racket/syntax)
+(define (gensym base)
+  (begin0
+    (format-id #f "~a~a" base (current-suffix))
+    (current-suffix
+     (add1 (current-suffix)))))
+(define current-suffix (make-parameter 0))
+
+; Wraps usual @app providing additional specification of state mutations that @app results.
+(define-operator mutated-app
+  #:identifier 'mutated-app
+  #:range (λ (expr read-dependencies mutations) (type-of expr))
+  #:unsafe (λ (expr read-dependencies mutations) expr))

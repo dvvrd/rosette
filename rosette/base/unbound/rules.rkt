@@ -9,10 +9,10 @@
            ite ite* guarded)
   (only-in "../core/bool.rkt" @boolean? @! @=> @&&)
   (only-in "../core/function.rkt" ~>)
-  (only-in "mutations.rkt" state->mutations symbolization->actual-value))
+  (only-in "mutations.rkt" state->mutations symbolization->actual-value mutated-app))
 
 (provide dbg @app (struct-out horn-clause)
-         register-solvable-function
+         register-solvable-function set-up-read-dependencies snapshot-read-dependencies
          rules->assertions term->rules (rename-out [eval-body/horn eval/horn])
          function-application->symbolic-constant
          bound-var? relation?)
@@ -52,7 +52,7 @@
               (horn-clause-conclusion self)))])
 
 (define (horn-clause->implication clause)
-  (match (horn-clause-premises clause)
+  (match (set->list (horn-clause-premises clause))
     [(list) (horn-clause-conclusion clause)]
     [(list premise) (apply expression @=> (list premise (horn-clause-conclusion clause)))]
     [_ (expression @=>
@@ -73,7 +73,7 @@
 (define (enrich rules additional-bound-vars additional-premises)
   (for/list ([rule rules])
     (horn-clause (set-union additional-bound-vars (horn-clause-bound-vars rule))
-                 (append additional-premises (horn-clause-premises rule))
+                 (set-union additional-premises (horn-clause-premises rule))
                  (horn-clause-conclusion rule))))
 
 (define-syntax rules->assertions
@@ -121,20 +121,30 @@
 ; Takes conclusion and constructs horn-clauses using current traversal context.
 (define (add-rule value)
   (let* ([resulting-clauses
-          (if (current-head)
-              (for**/list (current-mutations-clauses)
-                          (λ (clauses)
-                            (let ([additional-bound-vars (apply set-union (map horn-clause-bound-vars clauses))]
-                                  [additional-premises (apply set-union (map horn-clause-premises clauses))])
-                              (horn-clause (set-union (current-bound-vars) additional-bound-vars)
-                                           (set-union (current-premises) additional-premises)
-                                           (function-application->relation (current-head)
-                                                                           (map (λ (dep) (dep #t))
-                                                                                (hash-ref read-dependencies (current-head)))
-                                                                           (current-args)
-                                                                           (map horn-clause-conclusion clauses)
-                                                                           value)))))
-              (list (horn-clause (current-bound-vars) (current-premises) value)))])
+          (cond
+            [(and (current-head) (empty? (current-mutations-clauses)))
+             (list
+              (horn-clause (current-bound-vars)
+                           (current-premises)
+                           (function-application->relation (current-head)
+                                                           (original-read-dependencies (current-head))
+                                                           (current-args)
+                                                           (list)
+                                                           value)))]
+            [(not (current-head))
+             (list (horn-clause (current-bound-vars) (current-premises) value))]
+            [else
+             (for**/list (current-mutations-clauses)
+                         (λ (clauses)
+                           (let ([additional-bound-vars (apply set-union (map horn-clause-bound-vars clauses))]
+                                 [additional-premises (apply set-union (map horn-clause-premises clauses))])
+                             (horn-clause (set-union (current-bound-vars) additional-bound-vars)
+                                          (set-union (current-premises) additional-premises)
+                                          (function-application->relation (current-head)
+                                                                          (original-read-dependencies (current-head))
+                                                                          (current-args)
+                                                                          (map horn-clause-conclusion clauses)
+                                                                          value)))))])])
     (current-rules (append (current-rules) resulting-clauses))))
 
 (define solvable-functions-cache (mutable-set))
@@ -149,10 +159,9 @@
 (define (register-solvable-function f)
   (set-add! solvable-functions-cache f))
 
-(define (function-application->symbolic-constant f args mutations)
+(define (function-application->symbolic-constant f args read-deps mutations)
   (let* ([id (fresh-intermediate-var 'ε)]
          [ε (constant id (solvable-range (type-of f)))]
-         [read-deps (map (λ (dep) (dep #f)) (hash-ref read-dependencies f))]
          [write-deps mutations]
          [auto-premise (function-application->relation f read-deps args write-deps ε)]
          [auto-bound-vars (parameterize ([current-bound-vars (set)])
@@ -193,14 +202,21 @@
 (define (fresh-bound-var id type)
   (constant (format-id #f "x!~a~a" (number->string (add1 id)) bound-var-suffix) type))
 
+(define (set-up-read-dependencies f body args scope)
+  (parameterize ([current-bound-vars (set)]
+                 [current-args args]
+                 [current-scope scope])
+    (eval/bound-vars body)
+    (hash-set! read-dependencies f
+               (map encapsulate
+                    (filter global-var? (set->list (current-bound-vars)))))))
+
 (define (fresh-relation f)
-  (let* ([read-deps (filter global-var? (set->list (current-bound-vars)))]
-         [write-deps (current-mutated-state)]
-         [read-deps-types (map type-of read-deps)]
+  (let* ([write-deps (current-mutated-state)]
+         [read-deps-types (map type-of (snapshot-read-dependencies f))]
          [write-deps-types (map type-of (state->mutations write-deps))]
          [result (constant (string->symbol (format "~a~a" f relation-suffix))
                            (function-type->relational-type read-deps-types (type-of f) write-deps-types))])
-    (hash-set! read-dependencies f (map encapsulate read-deps))
     (hash-set! write-dependencies f write-deps)
     result))
 
@@ -228,8 +244,15 @@
 
 (define (encapsulate const)
   (λ (original?)
-    (if original? const (symbolization->actual-value
-                         (symbolization->actual-value const)))))
+    (if original? const (symbolization->actual-value const))))
+
+(define (original-read-dependencies f)
+  (map (λ (dep) (dep #t))
+       (hash-ref read-dependencies f)))
+
+(define (snapshot-read-dependencies f)
+  (map (λ (dep) (dep #f))
+       (hash-ref read-dependencies f)))
 
 (define (fill-in-insufficient common-vars n type)
   (cond [(<= n (length common-vars)) common-vars]
@@ -317,6 +340,9 @@
                  (expression @app f args))])
        (when tail-position? (add-rule result))
        result)]
+    [(expression (== mutated-app) (expression (== @app) f args ...) read-deps mutations)
+     (term->horn-clauses tail-position?
+                         (function-application->symbolic-constant f (terms->horn-clauses args) read-deps mutations))]
     [(expression (== ite) test then else)
      (let* ([test (term->horn-clauses #f test)]
             [then
