@@ -40,6 +40,7 @@
 (define (detect-recursion id)
   (when (called? id)
     (for ([call (current-call-stack)])
+      #:final (free-identifier=? id call)
       (free-id-set-add! recursive-functions call))))
 
 ; Returns #t if 'id is an identifier of (mutually) recursive function.
