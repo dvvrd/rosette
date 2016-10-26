@@ -8,7 +8,7 @@
          (only-in "../../base/core/bool.rkt" @boolean?)
          (only-in "../../base/core/bitvector.rkt" bitvector? bitvector-size)
          (only-in "../../base/core/real.rkt" @integer? @real?)
-         (only-in "../../base/unbound/rules.rkt" bound-var? relation?))
+         (only-in "../../base/unbound/encoding.rkt" bound-var? relation?))
 
 (provide (rename-out [make-hash env]) ref! clear! smt-type)
 

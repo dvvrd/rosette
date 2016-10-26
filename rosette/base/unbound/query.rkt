@@ -1,7 +1,7 @@
 #lang racket
 
 (require
-  "rules.rkt"
+  "encoding.rkt" "horn.rkt"
   "../../query/finitize.rkt"
   "../../solver/solver.rkt" "../../solver/horn-solver.rkt"
   (only-in "../../query/core.rkt" eval/asserts)

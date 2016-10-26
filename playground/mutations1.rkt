@@ -17,7 +17,7 @@
     [else f]))
 
 (define/unbound (g n) (~> integer? integer?)
-  (set! f (add1 f))
+  (set! f (+ f 7))
   n)
 
 
