@@ -3,7 +3,8 @@
 (require 
  (for-syntax racket))
 
-(provide speculate speculate* speculate/unsafe apply! location=? (rename-out [state-val location-final-value]) location-current-value)
+(provide speculate speculate* speculate/unsafe speculate*/unsafe
+         apply! location=? (rename-out [state-val location-final-value]) location-current-value)
 
 ; The env parameter stores an eq? based hash-map which we use to keep
 ; track of boxes, vectors and structs that are mutated.  
@@ -72,6 +73,20 @@
     (env (make-custom-hash eq? eq-hash-code))
     (lambda ()
       (collect void))))
+
+; Like speculate*, but does not catch thrown exceptions.
+(define-syntax-rule (speculate*/unsafe body)
+  ; using an eq? rather than equal? hash map to manage the environment bindings
+  ; is critical for mutable objects whose hash code may change upon mutation.  note
+  ; that variables are keyed by the symbol representing their name, so eq? comparisons
+  ; for them are equivalent to equal? comparisons.
+  (parameterize ([env (make-custom-hash eq? eq-hash-code)])
+    ; roll-back state updates, encapsulate
+    ; updates to set! variables as specified above,
+    ; and return the value of the body together with the
+    ; encapsulation of the state changes
+    (values body (rollback/collect))))
+
 
 ; A function that handles calls to structure mutators.  
 (define apply! 
@@ -157,7 +172,8 @@
 ; their initial values, without encapsulating the final state updates.
 ; Returns (values #f #f).  The error argument is ignored.
 (define (rollback/suppress err)
-  ;(printf "\n\nERROR: ~a\n\n" err)
+  (printf "\n\nERROR: ~a\n\n" err)
+  (error 'effects "FUCK!!!")
   (unless (zero? (dict-count (env)))
     (for* ([states (in-dict-values (env))]
            [s (if (list? states) (in-list states) (in-dict-values states))])

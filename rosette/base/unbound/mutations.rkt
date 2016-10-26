@@ -1,11 +1,11 @@
 #lang racket
 
-(require (only-in "../core/effects.rkt" speculate/unsafe speculate* location-final-value location-current-value)
+(require (only-in "../core/effects.rkt" speculate/unsafe speculate*/unsafe location-final-value location-current-value location=?)
          (only-in "../core/term.rkt" constant constant? type-of solvable? define-operator))
 
-(provide mutables:=symbolic!/track mutables:=symbolic!/memorize
+(provide state-union mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
-         speculate* create-rollback-point mutated-app restore-symbolization)
+         create-rollback-point restore-symbolization (rename-out [speculate*/unsafe speculate*]))
 
 (define create-rollback-point (speculate/unsafe))
 
@@ -21,6 +21,9 @@
     (if (solvable? type)
         (constant (gensym 'μ) type)
         post)))
+
+(define (state-union s1 s2)
+  (remove-duplicates (append s1 s2) location=?))
 
 ; Modifies contents of solvable mutable variables in a given state
 ; writing into it fresh symbolic constant of corresponding type.
@@ -98,9 +101,3 @@
     (current-suffix
      (add1 (current-suffix)))))
 (define current-suffix (make-parameter 0))
-
-; Wraps usual @app providing additional specification of state mutations that @app results.
-(define-operator mutated-app
-  #:identifier 'mutated-app
-  #:range (λ (expr read-dependencies mutations) (type-of expr))
-  #:unsafe (λ (expr read-dependencies mutations) expr))

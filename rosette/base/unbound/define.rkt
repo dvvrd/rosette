@@ -7,9 +7,7 @@
            constant constant? expression
            solvable-domain solvable-range term-cache type-of)
   (only-in "../form/define.rkt" define-symbolic)
-  "call-graph.rkt"
-  "mutations.rkt"
-  "rules.rkt")
+  "call-graph.rkt" "mutations.rkt" "dependencies.rkt" "encoding.rkt")
 
 (provide define/unbound rules->assertions)
 
@@ -21,10 +19,11 @@
          (define (symbolize)
            (let ([constants (mutables:=symbolic!/memorize (mutations-of #'head))]
                  [head-constant (free-id-table-ref function-constants #'head)])
-             (dbg "Resulting constants: ~a" constants)
+             (unless (null? constants)
+               (printf "Resulting constants: ~a\n" constants))
              (function-application->symbolic-constant head-constant
                                                       (list args ...)
-                                                      (snapshot-read-dependencies head-constant)
+                                                      (read-dependencies/current head-constant)
                                                       constants)))
          (cond
            [(already-speculated? #'head)
@@ -33,7 +32,7 @@
             (let ([head-constant (free-id-table-ref function-constants #'head)])
               (if (associated? #'head)
                   (let ([constants (mutables:=symbolic!/memorize (mutations-of #'head))])
-                    (expression mutated-app (head-constant args ...) (snapshot-read-dependencies head-constant) constants))
+                    (expression dependent-app (head-constant args ...) (read-dependencies/current head-constant) constants))
                   (with-call #'head (constant (gensym) (solvable-range (type-of head-constant))))))]
            [else
             (with-call #'head
@@ -50,18 +49,12 @@
                                         [else
                                          (mutables:=symbolic!/track state/before)
                                          (set-box! state/middle (create-rollback-point))])
-                                      (let-values
-                                          ([(term state)
-                                            (speculate*
-                                             ((thunk
-                                               (register-solvable-function head-constant)
-                                               #,@(for/list ([arg (syntax->list #'(args ...))]
-                                                             [i (in-naturals)])
-                                                    #`(define-symbolic #,arg (i-th-member-of-domain #,i type)))
-                                               (set-box! arg-constants (list args ...))
-                                               (set-box! term-cache-snapshot (hash-copy (term-cache)))
-                                               body
-                                               body-rest ...)))])
+                                      #,@(for/list ([arg (syntax->list #'(args ...))]
+                                                    [i (in-naturals)])
+                                           #`(define-symbolic #,arg (i-th-member-of-domain #,i type)))
+                                      (set-box! arg-constants (list args ...))
+                                      (set-box! term-cache-snapshot (hash-copy (term-cache)))
+                                      (let-values ([(term state) (speculate* ((thunk body body-rest ...)))])
                                         (cons term state)))]
                             [(term state/after) (speculate/symbolized (impl))]
                             [(scoped-constants) (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot))]) ; TODO: make it more effective with splicing-let
@@ -71,6 +64,7 @@
                   (set!-values (term state/after) (speculate/symbolized (impl)))
                   (set! scoped-constants (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot)))
                   (associate #'head state/after))
+                (set-up-write-dependencies head-constant state/after)
                 (eval/horn term
                            head-constant
                            (unbox arg-constants)
@@ -97,6 +91,6 @@
 (define (speculating-currently? id) (called? id))
 
 (define (mutations-of id)
-  (fold/reachable id (compose remove-duplicates append)))
+  (fold/reachable id state-union))
 
 (define function-constants (make-free-id-table))
