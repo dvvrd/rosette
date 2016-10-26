@@ -1,11 +1,11 @@
 #lang racket
 
-(require (only-in "../core/effects.rkt" speculate/unsafe speculate* location-final-value location-current-value location=?)
+(require (only-in "../core/effects.rkt" speculate/unsafe speculate*/unsafe location-final-value location-current-value location=?)
          (only-in "../core/term.rkt" constant constant? type-of solvable? define-operator))
 
 (provide state-union mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
-         speculate* create-rollback-point restore-symbolization)
+         create-rollback-point restore-symbolization (rename-out [speculate*/unsafe speculate*]))
 
 (define create-rollback-point (speculate/unsafe))
 

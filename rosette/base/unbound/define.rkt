@@ -19,7 +19,8 @@
          (define (symbolize)
            (let ([constants (mutables:=symbolic!/memorize (mutations-of #'head))]
                  [head-constant (free-id-table-ref function-constants #'head)])
-             (printf "Resulting constants: ~a\n" constants)
+             (unless (null? constants)
+               (printf "Resulting constants: ~a\n" constants))
              (function-application->symbolic-constant head-constant
                                                       (list args ...)
                                                       (read-dependencies/current head-constant)
