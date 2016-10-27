@@ -7,7 +7,9 @@
            constant constant? expression
            solvable-domain solvable-range term-cache type-of)
   (only-in "../form/define.rkt" define-symbolic)
-  "call-graph.rkt" "mutations.rkt" "dependencies.rkt" "encoding.rkt")
+  (only-in "utils.rkt" hash-values-diff+filter)
+  (only-in "call-graph.rkt" with-call called? stack-size recursive?)
+  "mutations.rkt" "dependencies.rkt" "encoding.rkt")
 
 (provide define/unbound rules->assertions)
 
@@ -24,9 +26,10 @@
            [else
             (with-call #'head
               (let* ([head-constant (constant #'head type)]
-                     [_ (free-id-table-set! function-constants #'head head-constant)]
+                     [_ (free-id-table-set! applicable-constants #'head head-constant)]
+                     [_ (associate-id #'head head-constant)]
                      [arg-constants (box #f)]
-                     [state/before (create-rollback-point)]
+                     [state/before (state-before-call)]
                      [state/middle (box #f)]
                      [term-cache-snapshot (box #f)]
                      [impl (λ ()
@@ -53,27 +56,26 @@
         (list-ref domain i)
         (error 'define "Too many arguments!"))))
 
-
-(define (hash-values-diff filter-func hash1 hash2)
-  (let ([values1 (apply set (filter filter-func (hash-values hash1)))]
-        [values2 (apply set (filter filter-func (hash-values hash2)))])
-    (set-subtract values1 values2)))
-
 (define-syntax-rule (speculate/symbolized body)
   (let-values ([(pair _) (speculate* body)])
     (values (car pair) (cdr pair))))
 
-(define (already-speculated? id) (and (associated? id) (not (called? id))))
+(define (already-speculated? id) (and (dict-has-key? applicable-constants id) (not (called? id))))
 (define (speculating-currently? id) (called? id))
+(define (call-tree-root?) (equal? (stack-size) 2))
 
-(define (mutations-of id)
-  (fold/reachable id state-union))
+(define applicable-constants (make-free-id-table))
+(define delimited-encodings (make-parameter (list)))
+(define current-state-before-call (make-parameter #f))
 
-(define function-constants (make-free-id-table))
+(define (state-before-call)
+  (when (call-tree-root?)
+    (current-state-before-call (create-rollback-point)))
+  (current-state-before-call))
 
 (define (symbolize head args)
-  (let ([constants (mutables:=symbolic!/memorize (mutations-of head))]
-        [head-constant (free-id-table-ref function-constants head)])
+  (let ([constants (mutables:=symbolic!/memorize (write-dependencies-states head))]
+        [head-constant (free-id-table-ref applicable-constants head)])
     (unless (null? constants)
       (printf "Resulting constants: ~a\n" constants))
     (function-application->symbolic-constant head-constant
@@ -82,9 +84,9 @@
                                              constants)))
 
 (define (symbolize-if-associated head args)
-  (let ([head-constant (free-id-table-ref function-constants head)])
-    (if (associated? head)
-        (let ([constants (mutables:=symbolic!/memorize (mutations-of head))])
+  (let ([head-constant (free-id-table-ref applicable-constants head)])
+    (if (read-dependencies-ready? head)
+        (let ([constants (mutables:=symbolic!/memorize (write-dependencies-states head-constant))])
           (expression dependent-app
                       (apply head-constant args)
                       (read-dependencies/current head-constant)
@@ -97,20 +99,25 @@
                                          body term-cache-snapshot)
   (define-values (term state/after) (speculate/symbolized (body)))
    ; TODO: make it more effective
-  (define scoped-constants (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot)))
-  (associate head state/after)
+  (define scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
   (set-up-read-dependencies head-constant term (unbox arg-constants) scoped-constants state/after)
+  (set-up-write-dependencies head-constant state/after)
   (define (delimited-encoding)
     (when (recursive? head)
       ; For recusive functions we need second execution, because we know set of write-dependencies only now.
       (set!-values (term state/after) (speculate/symbolized (body)))
-      (set! scoped-constants (hash-values-diff constant? (term-cache) (unbox term-cache-snapshot)))
-      (associate head state/after))
-    (set-up-write-dependencies head-constant state/after)
+      (set! scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
+      (set-up-write-dependencies head-constant state/after))
     (eval/horn term
                head-constant
                (unbox arg-constants)
-               (set-subtract scoped-constants (list->set (unbox arg-constants)))
-               state/after)
-    (symbolize head args))
-  (delimited-encoding))
+               (set-subtract scoped-constants (list->set (unbox arg-constants)))))
+  (cond [(recursive? head)
+         (delimited-encodings (cons delimited-encoding (delimited-encodings)))
+         (cond
+           [(call-tree-root?)
+            (for ([enc (reverse (delimited-encodings))]) (enc))
+            (symbolize head args)]
+           [else
+            (constant (gensym) (solvable-range (type-of head-constant)))])]
+        [else (delimited-encoding)]))

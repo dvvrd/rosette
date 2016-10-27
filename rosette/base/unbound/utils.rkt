@@ -1,6 +1,6 @@
 #lang racket
 
-(require (only-in "../core/term.rkt" expression constant))
+(require (only-in "../core/term.rkt" expression constant type-applicable?))
 
 (provide (all-defined-out))
 
@@ -25,7 +25,7 @@
 (define (term->constants t)
   (match t
     [(expression op args ...) (terms->constants args)]
-    [(constant _ _) (set t)]
+    [(constant _ type) (if (type-applicable? type) (set) (set t))]
     [_ (set)]))
 
 ; Returns a set of all symbolic constants of terms ts.
@@ -34,3 +34,10 @@
            (set-union acc (term->constants t)))
          (set)
          ts))
+
+; Returns set of values stored in hash1, but not stored in hash2 and
+; filtered with filter-func.
+(define (hash-values-diff+filter filter-func hash1 hash2)
+  (let ([values1 (list->set (filter filter-func (hash-values hash1)))]
+        [values2 (list->set (filter filter-func (hash-values hash2)))])
+    (set-subtract values1 values2)))

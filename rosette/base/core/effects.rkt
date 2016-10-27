@@ -172,8 +172,7 @@
 ; their initial values, without encapsulating the final state updates.
 ; Returns (values #f #f).  The error argument is ignored.
 (define (rollback/suppress err)
-  (printf "\n\nERROR: ~a\n\n" err)
-  (error 'effects "FUCK!!!")
+  ;(printf "\n\nERROR: ~a\n\n" err)
   (unless (zero? (dict-count (env)))
     (for* ([states (in-dict-values (env))]
            [s (if (list? states) (in-list states) (in-dict-values states))])
