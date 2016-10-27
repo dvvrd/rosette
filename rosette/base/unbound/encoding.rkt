@@ -73,13 +73,13 @@
 
 ;; ----------------- Symbolic term --> Horn clauses ----------------- ;;
 
-(define (eval-body/horn t head args scope mutations)
+(define (eval-body/horn t head args scope)
   (parameterize ([current-head head]
                  [current-args args])
     (define mutations-clauses
       (parameterize ([current-head #f]
                      [current-args #f])
-        (for/list ([m (state->mutations mutations)])
+        (for/list ([m (write-dependencies head)])
           (term->rules m))))
 
     (parameterize ([current-mutations-clauses mutations-clauses]

@@ -19,7 +19,7 @@
                 (horn-clause-bound-vars self)
                 (curry format "~a"))
                ", ")
-              (set->list (horn-clause-premises self))
+              (cons '&& (set->list (horn-clause-premises self)))
               (horn-clause-conclusion self)))])
 
 

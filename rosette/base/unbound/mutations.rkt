@@ -3,14 +3,16 @@
 (require (only-in "../core/effects.rkt" speculate/unsafe speculate*/unsafe location-final-value location-current-value location=?)
          (only-in "../core/term.rkt" constant constant? type-of solvable? define-operator))
 
-(provide state-union mutables:=symbolic!/track mutables:=symbolic!/memorize
+(provide mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
-         create-rollback-point restore-symbolization (rename-out [speculate*/unsafe speculate*]))
+         create-rollback-point restore-symbolization source-location=?
+         (rename-out [speculate*/unsafe speculate*] [location=? state=?]))
 
 (define create-rollback-point (speculate/unsafe))
 
 (define tracked-values (make-hash))
 (define memorized-values (make-hash))
+(define source-locations (make-hash))
 
 (define (mutable:=symbolic!/report box pre post)
   (set-box! box (mutable:=symbolic! pre post))
@@ -22,8 +24,14 @@
         (constant (gensym 'μ) type)
         post)))
 
-(define (state-union s1 s2)
-  (remove-duplicates (append s1 s2) location=?))
+; Returns (equal? s1 s2) if s1 and s2 are not symbolic constants or symbolic constants NOT
+; obtained by mutables:=symbolic!/*. If both s1 and s2 produced by mutables:=symbolic!/*
+; then compares locations that they overwritted.
+(define (source-location=? s1 s2)
+  (and (hash-has-key? source-locations s1)
+       (hash-has-key? source-locations s2)
+       (location=? (hash-ref source-locations s1)
+                   (hash-ref source-locations s2))))
 
 ; Modifies contents of solvable mutable variables in a given state
 ; writing into it fresh symbolic constant of corresponding type.
@@ -40,7 +48,8 @@
           (s (curry mutable:=symbolic!/report b))
           (let ([new-val (unbox b)])
             (when (constant? new-val)
-              (hash-set! tracked-values new-val (λ () (location-current-value s)))))))
+              (hash-set! tracked-values new-val (λ () (location-current-value s)))
+              (hash-set! source-locations new-val s)))))
       (state mutable:=symbolic!)))
 
 ; Modifies contents of solvable mutable variables in a given state
@@ -52,17 +61,19 @@
 ; that were overwritten by those constants, later those values can be obtained
 ; via value-before-symbolization.
 (define (mutables:=symbolic!/memorize state)
-  (if (list? state)
-      (filter constant?
-              (for/list ([s state])
-                (let ([b (box #f)]
-                      [old-val (location-current-value s)])
-                  (s (curry mutable:=symbolic!/report b))
-                  (let ([new-val (unbox b)])
-                    (when (constant? new-val)
-                      (hash-set! memorized-values new-val old-val))
-                    new-val))))
-      (state mutable:=symbolic!)))
+  (cond
+    [(list? state)
+     (filter constant?
+            (for/list ([s state])
+              (let ([b (box #f)]
+                    [old-val (location-current-value s)])
+                (s (curry mutable:=symbolic!/report b))
+                (let ([new-val (unbox b)])
+                  (when (constant? new-val)
+                    (hash-set! memorized-values new-val old-val)
+                    (hash-set! source-locations new-val s))
+                  new-val))))]
+    [else (state mutable:=symbolic!)]))
 
 ; Returns a values of state after it was mutated (and before rolled-back).
 (define (state->mutations state)
