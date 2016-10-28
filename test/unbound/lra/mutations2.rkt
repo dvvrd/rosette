@@ -1,9 +1,8 @@
 #lang rosette/unbound
 
 (current-bitwidth #f)
-(define-symbolic n integer?)
 
-(define-symbolic sum1 integer?)
+(define-symbolic n sum1 integer?)
 
 (set! sum1 0)
 
