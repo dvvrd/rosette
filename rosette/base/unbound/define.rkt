@@ -37,7 +37,7 @@
                                  [(unbox state/middle)
                                   (restore-symbolization (unbox state/middle))]
                                  [else
-                                  (mutables:=symbolic!/track state/before)
+                                  (mutables:=symbolic!/track head-constant state/before)
                                   (set-box! state/middle (create-rollback-point))])
                                #,@(for/list ([arg (syntax->list #'(args ...))]
                                              [i (in-naturals)])
@@ -116,8 +116,17 @@
          (delimited-encodings (cons delimited-encoding (delimited-encodings)))
          (cond
            [(call-tree-root?)
-            (for ([enc (reverse (delimited-encodings))]) (enc))
+            (eval-delimited-encodings head args)
             (symbolize head args)]
            [else
             (constant (gensym) (solvable-range (type-of head-constant)))])]
-        [else (delimited-encoding)]))
+        [else
+         (delimited-encoding)
+         (when (call-tree-root?)
+           (eval-delimited-encodings head args))
+         (symbolize head args)]))
+
+
+(define (eval-delimited-encodings head args)
+  (for ([enc (reverse (delimited-encodings))]) (enc))
+  (delimited-encodings (list)))

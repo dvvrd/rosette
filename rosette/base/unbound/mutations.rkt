@@ -5,7 +5,7 @@
 
 (provide mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
-         create-rollback-point restore-symbolization source-location=?
+         create-rollback-point restore-symbolization source-location=? symbolization-of-head
          (rename-out [speculate*/unsafe speculate*] [location=? state=?]))
 
 (define create-rollback-point (speculate/unsafe))
@@ -41,7 +41,7 @@
 ; symbolization->actual-value will return current (i.e. actual at the moment
 ; of call symbolization->actual-value) values of locations that were
 ; overwritten by tracked constants.
-(define (mutables:=symbolic!/track state)
+(define (mutables:=symbolic!/track head state)
   (if (list? state)
       (for ([s state])
         (let ([b (box #f)])
@@ -49,7 +49,7 @@
           (let ([new-val (unbox b)])
             (when (constant? new-val)
               (hash-set! tracked-values new-val (λ () (location-current-value s)))
-              (hash-set! source-locations new-val s)))))
+              (associate-tracked-symbolization head s new-val)))))
       (state mutable:=symbolic!)))
 
 ; Modifies contents of solvable mutable variables in a given state
@@ -103,6 +103,23 @@
       (for ([s state])
         (s (λ (pre post) post)))
       (state (λ (pre post) post))))
+
+(define (symbolization-origin=? l1 l2)
+  (and (equal? (car l1) (car l2))
+       (location=? (cdr l1) (cdr l2))))
+
+(define symbolization-origins (make-custom-hash symbolization-origin=?))
+
+(define (associate-tracked-symbolization head state val)
+  (dict-set! source-locations val state)
+  (dict-set! symbolization-origins (cons head state) val))
+
+(define (symbolization-of-head head constant)
+  (if (hash-has-key? source-locations constant)
+      (dict-ref symbolization-origins
+                (cons head (hash-ref source-locations constant))
+                constant)
+      constant))
 
 ; Just for debug, shorter suffixes
 (require racket/syntax)
