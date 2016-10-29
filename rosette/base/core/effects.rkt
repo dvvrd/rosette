@@ -4,7 +4,7 @@
  (for-syntax racket))
 
 (provide speculate speculate* speculate/unsafe speculate*/unsafe
-         apply! location=? (rename-out [state-val location-final-value]) location-current-value)
+         apply! location=? location<? (rename-out [state-val location-final-value]) location-current-value)
 
 ; The env parameter stores an eq? based hash-map which we use to keep
 ; track of boxes, vectors and structs that are mutated.  
@@ -139,7 +139,16 @@
      (and (eq? rec0 rec1) (equal? loc0 loc1))]
     [(_ _) #f]))
 
- 
+
+; Defines some partial order on locations, can be used for sorting states.
+(define (location<? s0 s1)
+  (match* (s0 s1)
+    [((state rec0 loc0 _ _ _) (state rec1 loc1 _ _ _))
+     (or (< (eq-hash-code rec0) (eq-hash-code rec1))
+         (and (eq? rec0 rec1)
+              (< (equal-hash-code loc0) (equal-hash-code loc1))))]
+    [(_ _) #f]))
+
 ; Adds a record of the given variable's or object's current state 
 ; to the environment, if the environment is valid and does not 
 ; already have a mapping for the record!-ed variable or object.

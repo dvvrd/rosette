@@ -8,7 +8,7 @@
 
 (require
   (only-in "../core/term.rkt" constant? define-operator type-of type-applicable?)
-  (only-in "mutations.rkt" state->mutations symbolization->actual-value state=? source-location=? symbolization-of-head)
+  (only-in "mutations.rkt" state->mutations symbolization->actual-value state=? source-location=? symbolization-of-head sort/states)
   (only-in "utils.rkt" terms->constants)
   (only-in "call-graph.rkt" make-associations associate associated? reset-associations-cache fold/reachable))
 
@@ -22,7 +22,10 @@
 (define write-dependencies-cache (make-associations))
 
 (define (write-dependencies-states f)
-  (fold/reachable write-dependencies-cache (constant->id f) write-dependencies-union))
+  (sort/states
+   (fold/reachable write-dependencies-cache
+                   (constant->id f)
+                   write-dependencies-union)))
 
 (define (write-dependencies f)
   (state->mutations (write-dependencies-states f)))

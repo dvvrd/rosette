@@ -1,12 +1,15 @@
 #lang racket
 
-(require (only-in "../core/effects.rkt" speculate/unsafe speculate*/unsafe location-final-value location-current-value location=?)
+(require (only-in "../core/effects.rkt"
+                  speculate/unsafe speculate*/unsafe
+                  location-final-value location-current-value
+                  location=? location<?)
          (only-in "../core/term.rkt" constant constant? type-of solvable? define-operator))
 
 (provide mutables:=symbolic!/track mutables:=symbolic!/memorize
          state->mutations state->current-values symbolization->actual-value
          create-rollback-point restore-symbolization source-location=? symbolization-of-head
-         (rename-out [speculate*/unsafe speculate*] [location=? state=?]))
+         sort/states (rename-out [speculate*/unsafe speculate*] [location=? state=?]))
 
 (define create-rollback-point (speculate/unsafe))
 
@@ -120,6 +123,9 @@
                 (cons head (hash-ref source-locations constant))
                 constant)
       constant))
+
+(define (sort/states states)
+  (sort states location<?))
 
 ; Just for debug, shorter suffixes
 (require racket/syntax)
