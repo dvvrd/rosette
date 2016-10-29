@@ -8,7 +8,7 @@
            solvable-domain solvable-range term-cache type-of)
   (only-in "../form/define.rkt" define-symbolic)
   (only-in "utils.rkt" hash-values-diff+filter)
-  (only-in "call-graph.rkt" with-call called? stack-size recursive?)
+  (only-in "call-graph.rkt" with-call called? stack-size recursive? mutual-recursion-root?)
   "mutations.rkt" "dependencies.rkt" "encoding.rkt")
 
 (provide define/unbound rules->assertions)
@@ -115,15 +115,13 @@
   (cond [(recursive? head)
          (delimited-encodings (cons delimited-encoding (delimited-encodings)))
          (cond
-           [(call-tree-root?)
+           [(mutual-recursion-root?)
             (eval-delimited-encodings head args)
             (symbolize head args)]
            [else
             (constant (gensym) (solvable-range (type-of head-constant)))])]
         [else
          (delimited-encoding)
-         (when (call-tree-root?)
-           (eval-delimited-encodings head args))
          (symbolize head args)]))
 
 

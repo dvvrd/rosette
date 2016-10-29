@@ -2,9 +2,8 @@
 
 (require racket/dict syntax/id-table syntax/id-set)
 
-(provide with-call called? stack-size recursive?
-         make-associations associate associated?
-         reset-associations-cache fold/reachable)
+(provide with-call called? stack-size recursive? mutual-recursion-root?
+         make-associations associate associated? reset-associations-cache fold/reachable)
 
 ;; ----------------- Call graph ----------------- ;;
 
@@ -53,6 +52,15 @@
 ; Returns #t if 'id is an identifier of (mutually) recursive function.
 (define (recursive? id)
   (free-id-set-member? recursive-functions id))
+
+; Returns #t if current callstack top is a (mutually) recusive function and
+; if it was called by function that is not (mutually) recursive.
+; In other words, returns #f if and only if current call stack top is call
+; in the middle of mutually recursive sequence of calls.
+(define (mutual-recursion-root?)
+  (and (>= (length (current-call-stack)) 2)
+       (recursive? (car (current-call-stack)))
+       (not (recursive? (cadr (current-call-stack))))))
 
 ;; ----------------- Associations ----------------- ;;
 

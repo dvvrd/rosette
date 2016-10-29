@@ -16,9 +16,9 @@
   (h n))
 
 (define/unbound (h n) (~> integer? integer?)
+  (set! y (add1 y))
   (cond [(<= n 0) 0]
-        [else
-         (set! y (add1 y))
-         (g (sub1 n))]))
+        [else (g (sub1 n))]))
 
-(verify/unbound (assert (and (zero? (f n)) (equal? x y))))
+(verify/unbound #:assume (assert (< n 10))
+                #:guarantee (assert (and (zero? (f n)) (equal? x y))))
