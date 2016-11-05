@@ -116,7 +116,7 @@
              (query (ref! (spacer-env self) q))
              (check-sat))) ; TODO: understand why it hangs without check-sat
      (solver-clear-stacks! self)
-     (server-read (spacer-server self) (decode env)))]
+     (server-read (spacer-server self) (decode/generalized (spacer-env self))))]
   )
 
 (define (reset-default-options)

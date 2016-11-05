@@ -34,6 +34,17 @@
     [(== 'unknown) 'unknown]
     [other (error 'solution "unrecognized solver output: ~a" other)]))
 
+(define (read-generalized-solution)
+  (define port (current-input-port))
+  (match (read port)
+    [(== 'sat) (make-hash)]
+    [(== 'unsat)
+     (match (read port)
+       [(list (? symbol? name) ...) name]
+       [_ #f])]
+    [(== 'unknown) 'unknown]
+    [other (error 'solution "unrecognized solver output: ~a" other)]))
+
 ; Prints all smt commands to current-output-port.
 (define-syntax-rule (printf-smt arg ...)
   (begin 

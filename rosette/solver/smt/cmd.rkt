@@ -2,8 +2,9 @@
 
 (require (only-in "smtlib2.rkt" assert minimize maximize
                   check-sat get-model get-unsat-core
-                  read-solution true false rule)
-         "env.rkt" "enc.rkt"
+                  read-solution read-generalized-solution
+                  true false rule)
+         "enc.rkt"
          (only-in "../../base/core/term.rkt" constant? term-type solvable-default)
          (only-in "../../base/core/function.rkt" fv function? function-domain function-range)
          (only-in "../../base/core/bool.rkt" @boolean?)
@@ -11,7 +12,7 @@
          (only-in "../../base/core/real.rkt" @integer? @real?)
          "../solution.rkt")
 
-(provide encode encode-for-proof encode-rules decode)
+(provide encode encode-for-proof encode-rules decode decode/generalized)
 
 ; Given an encoding environment and a list of asserts, minimization objectives,
 ; and maximization objective, the encode procedure prints an SMT encoding of the given assertions, 
@@ -79,6 +80,19 @@
                       (if (function? t)
                           (decode-function t (hash-ref sol id))
                           (decode-value t (hash-ref sol id)))))))]
+    [(? list? names)
+     (unsat (let ([core (apply set (map name->id names))])
+              (for/list ([(bool id) (in-dict env)] #:when (set-member? core id))
+                 (if (constant? bool) bool (car bool)))))]
+    [#f (unsat)]
+    ['unknown (unknown)]))
+
+; Given an encoding enviornment, the decode procedure reads
+; the generalized counter-example from current-input-port
+; and converts it into a Rosette solution object.
+(define (decode/generalized env)
+  (match (read-generalized-solution)
+    [(? hash? sol) (sat)]
     [(? list? names)
      (unsat (let ([core (apply set (map name->id names))])
               (for/list ([(bool id) (in-dict env)] #:when (set-member? core id)) 
