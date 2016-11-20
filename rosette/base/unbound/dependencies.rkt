@@ -7,15 +7,26 @@
 ; by one of its callees.
 
 (require
-  (only-in "../core/term.rkt" constant? define-operator type-of type-applicable?)
+  racket/generic
+  (only-in "../core/term.rkt" constant? define-operator type-of type-applicable? term<?)
   (only-in "mutations.rkt" state->mutations symbolization->actual-value state=? source-location=? symbolization-of-head sort/states)
   (only-in "utils.rkt" terms->constants)
   (only-in "call-graph.rkt" make-associations associate associated? reset-associations-cache fold/reachable))
 
-(provide read-dependencies/original read-dependencies/current
+(provide gen:implicitly-dependent
+         read-dependencies/original read-dependencies/current
          write-dependencies write-dependencies-states
          set-up-read-dependencies set-up-write-dependencies
          read-dependencies-ready? dependent-app associate-id)
+
+; This generics can be implemented to provide implicit dependencies
+; for the implementor. Implicit dependencies are the symbolic constants
+; that will be used in the final symbolic expression for horn-clauses
+; containing the implementor. If such implementor is passed as argument
+; then implicit dependencies should not be added into functions's read
+; dependencies (cause they are essentially implicit arguments of the funciton).
+(define-generics implicitly-dependent
+  [implicit-dependencies implicitly-dependent instance])
 
 (define constants-to-ids (make-hash))
 (define read-dependencies-cache (make-associations))
@@ -31,8 +42,10 @@
   (state->mutations (write-dependencies-states f)))
 
 (define (read-dependencies/original f)
-  (map (curry symbolization-of-head f)
-       (fold/reachable read-dependencies-cache (constant->id f) read-dependencies-union)))
+  (sort
+   (map (curry symbolization-of-head f)
+        (fold/reachable read-dependencies-cache (constant->id f) read-dependencies-union))
+   term<?))
 
 (define (read-dependencies/current f)
   (map symbolization->actual-value (read-dependencies/original f)))
@@ -48,9 +61,17 @@
   (associate write-dependencies-cache (constant->id f) mutations-state))
 
 (define (set-up-read-dependencies f body args scope mutations-state)
-  (let* ([mutations (state->mutations mutations-state)]
+  (reset-associations-cache read-dependencies-cache)
+  (let* ([args-implicit-dependencies (list->set
+                                      (apply append
+                                             (map (λ (arg)
+                                                    (if (implicitly-dependent? (type-of arg))
+                                                        (implicit-dependencies (type-of arg) arg)
+                                                        (list)))
+                                                  args)))]
+         [mutations (state->mutations mutations-state)]
          [constants (terms->constants (cons body mutations))]
-         [global-constants (filter (λ (v) (global-var? v args scope))
+         [global-constants (filter (λ (v) (global-var? v args scope args-implicit-dependencies))
                                    (set->list constants))])
     (associate read-dependencies-cache (constant->id f) global-constants)))
 
@@ -70,11 +91,15 @@
 (define (local-var? v [scope #f])
   (and scope (set-member? scope v)))
 
-(define (global-var? v [args #f] [scope #f])
+(define (implicit-dependence? v [implicit-dependencies #f])
+  (and implicit-dependencies (set-member? implicit-dependencies v)))
+
+(define (global-var? v [args #f] [scope #f] [implicit-dependencies #f])
   (and (constant? v)
        (not (or (argument? v args)
                 (type-applicable? (type-of v))
-                (local-var? v scope)))))
+                (local-var? v scope)
+                (implicit-dependence? v implicit-dependencies)))))
 
 (define (read-dependencies-union d1 d2)
   (remove-duplicates (append d1 d2)

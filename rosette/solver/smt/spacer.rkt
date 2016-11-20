@@ -147,6 +147,7 @@
 
 (define (solver-clear-stacks! self)
   (set-spacer-asserts! self '())
+  (set-spacer-rules! self '())
   (set-spacer-mins! self '())
   (set-spacer-maxs! self '()))
 

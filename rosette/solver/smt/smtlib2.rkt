@@ -37,7 +37,12 @@
 (define (read-generalized-solution)
   (define port (current-input-port))
   (match (read port)
-    [(== 'sat) (make-hash)]
+    [(== 'sat)
+     (let loop ()
+       (match (read port)
+         [(list (== 'objectives) _ ...) (loop)]
+         [(list (== 'model) def ...) (make-hash)]
+         [other (make-hash)]))]
     [(== 'unsat)
      (match (read port)
        [(list (? symbol? name) ...) name]

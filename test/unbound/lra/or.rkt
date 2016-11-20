@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+; Expecting unsat and unsat
+
 (current-bitwidth #f)
 
 (define/unbound (id/boolean c) (~> boolean? boolean?)

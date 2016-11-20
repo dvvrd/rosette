@@ -9,3 +9,4 @@
          (fib (- n 2)))))
 
 (verify/unbound (assert (> (fib m) 0)))
+(verify/unbound (assert (> (fib m) 1)))

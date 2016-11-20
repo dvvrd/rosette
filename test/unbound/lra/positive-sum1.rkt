@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+; Expecting unsat
+
 (current-bitwidth #f)
 (define-symbolic n m integer?)
 

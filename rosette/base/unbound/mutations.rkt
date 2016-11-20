@@ -96,10 +96,11 @@
 (define (symbolization->actual-value constant)
   (hash-ref memorized-values constant
             (thunk
-             (if (hash-has-key? tracked-values constant)
-                 (let ([val ((hash-ref tracked-values constant))])
-                   (hash-ref memorized-values val val))
-                 constant))))
+             ((hash-ref tracked-values constant (thunk (thunk constant)))))))
+;             (if (hash-has-key? tracked-values constant)
+;                 (let ([val ((hash-ref tracked-values constant))])
+;                   (hash-ref memorized-values val val))
+;                 constant))))
 
 (define (restore-symbolization state)
   (if (list? state)

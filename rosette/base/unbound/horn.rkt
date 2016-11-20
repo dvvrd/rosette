@@ -1,30 +1,42 @@
 #lang racket
 
 (require
-  racket/syntax
+  racket/generic
   (only-in "../core/bool.rkt" @=> @&& @boolean?)
   (only-in "../core/term.rkt" constant constant? expression type-of)
-  (only-in "relation.rkt" relation?)
   (only-in "bound-vars.rkt" share-vars))
 
-(provide (struct-out horn-clause) clauses->assertions)
+(provide (struct-out horn-clause) clauses->assertions
+         gen:horn-transformer register-horn-transformer)
 
-(struct horn-clause (bound-vars premises conclusion)
+(struct horn-clause (premises conclusion)
   #:methods gen:custom-write
   [(define (write-proc self port mode)
      (fprintf port
-              "∀(~a) [=> ~a ~a]"
-              (string-join
-               (set-map
-                (horn-clause-bound-vars self)
-                (curry format "~a"))
-               ", ")
+              "[=> ~a ~a]"
               (cons '&& (set->list (horn-clause-premises self)))
               (horn-clause-conclusion self)))])
 
+;; ----------------- Processing before passing to solver ----------------- ;;
+
+(define-generics horn-transformer
+  [pre-process horn-transformer clauses]
+  [post-process horn-transformer terms])
+
+(define horn-transformers (make-parameter '()))
+
+(define (register-horn-transformer transformer)
+  (unless (horn-transformer? transformer)
+    (raise-arguments-error register-horn-transformer "expected a Horn clauses transformer" "transformer" transformer))
+  (horn-transformers (cons transformer (horn-transformers))))
+
+(define (do-pre-processing clauses)
+  (foldl pre-process clauses (horn-transformers)))
+
+(define (do-post-processing clauses)
+  (foldl post-process clauses (horn-transformers)))
 
 ;; ----------------- Translation to symbolic expression ----------------- ;;
-
 
 (define (horn-clause->implication clause)
   (match (set->list (horn-clause-premises clause))
@@ -36,19 +48,20 @@
 (define (clause->assertion clause)
   (cond
     [(horn-clause? clause)
-     (let ([result (share-vars (horn-clause-bound-vars clause)
-                               (horn-clause->implication clause))])
+     (let ([result (horn-clause->implication clause)])
        (when result (printf "Rule: ~a\n" clause))
        result)]
     [else clause]))
 
-(define (enrich clauses additional-bound-vars additional-premises)
+(define (enrich clauses additional-premises)
   (for/list ([clause clauses])
-    (horn-clause (set-union additional-bound-vars (horn-clause-bound-vars clause))
-                 (set-union additional-premises (horn-clause-premises clause))
+    (horn-clause (set-union additional-premises (horn-clause-premises clause))
                  (horn-clause-conclusion clause))))
 
-(define (clauses->assertions clauses additional-bound-vars additional-premises)
-  (filter identity
-          (map clause->assertion
-               (enrich clauses additional-bound-vars additional-premises))))
+(define (clauses->assertions clauses additional-premises)
+  (share-vars
+   (do-post-processing
+    (filter identity
+            (map clause->assertion
+                 (do-pre-processing
+                  (enrich clauses additional-premises)))))))

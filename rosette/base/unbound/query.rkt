@@ -4,11 +4,10 @@
   "encoding.rkt" "horn.rkt"
   "../../query/finitize.rkt"
   "../../solver/solver.rkt" "../../solver/horn-solver.rkt"
-  (only-in "../../query/core.rkt" eval/asserts)
-  (only-in "../core/bool.rkt" ! || @boolean? @&& @=>)
+  (only-in "../core/bool.rkt" ! || @boolean? @&& @=> with-asserts-only)
+  (only-in "../core/term.rkt" term-cache constant expression @app)
   (only-in "../../query/form.rkt" solve current-solver)
-  (only-in "../../solver/smt/spacer.rkt" spacer)
-  (only-in "../core/term.rkt" term-cache constant expression @app))
+  (only-in "../../solver/smt/spacer.rkt" spacer))
 
 (provide solve/unbound verify/unbound current-horn-solver)
 
@@ -25,12 +24,12 @@
 (define-syntax verify/unbound
   (syntax-rules ()
     [(_ #:assume pre #:guarantee post)
-     (let*-values ([(fail-rel) (constant 'fail° @boolean?)]
-                   [(premises) (eval/asserts (thunk pre))]
-                   [(conclusions) (eval/asserts (thunk post))]
-                   [(premises-vars premises) (premises-union premises)]
-                   [(queries) (conclusions-union conclusions fail-rel)]
-                   [(rules) (append (rules->assertions premises-vars premises) (rules->assertions queries premises-vars premises))])
+     (let* ([fail-rel (constant 'fail° @boolean?)]
+            [premises (eval/asserts (thunk pre))]
+            [conclusions (eval/asserts (thunk post))]
+            [premises (premises-union premises)]
+            [queries (conclusions-union conclusions fail-rel)]
+            [rules (rules->assertions queries premises)])
        ;(dbg "FINAL RULES:\n~a" rules)
        (∃-solve rules fail-rel))]
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
@@ -38,16 +37,14 @@
 
 (define (premises-union assertions)
   (let* ([clauses (apply append (map term->rules assertions))]
-         [bound-vars (apply set-union (cons (set) (map horn-clause-bound-vars clauses)))]
          [premises (apply set-union (cons (set) (map horn-clause-premises clauses)))]
          [conclusions (map horn-clause-conclusion clauses)])
-    (values bound-vars (set-union premises (list->set conclusions)))))
+    (set-union premises (list->set conclusions))))
 
 (define (conclusions-union conclusions query)
   (let ([conclusions-clauses (apply append (map term->rules conclusions))])
     (map (λ (conclusion)
            (horn-clause
-            (horn-clause-bound-vars conclusion)
             (set-add (horn-clause-premises conclusion) (! (horn-clause-conclusion conclusion)))
             query))
          conclusions-clauses)))
@@ -104,3 +101,6 @@
          (solver-add-rules solver rules)
          (solver-query solver query)]))
     (solver-clear solver)))
+
+(define (eval/asserts closure)
+  (with-asserts-only (closure)))

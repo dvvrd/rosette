@@ -1,130 +1,78 @@
 #lang racket
 
 (require
-  syntax/id-table
-  (for-syntax racket syntax/parse)
-  (only-in "../core/term.rkt"
-           constant constant? expression
-           solvable-domain solvable-range term-cache type-of)
-  (only-in "../form/define.rkt" define-symbolic)
-  (only-in "utils.rkt" hash-values-diff+filter)
-  (only-in "call-graph.rkt" with-call called? stack-size recursive? mutual-recursion-root?)
-  "mutations.rkt" "dependencies.rkt" "encoding.rkt")
+  "function.rkt"
+  (only-in "../core/bool.rkt" @boolean?)
+  (only-in "../core/function.rkt" ~>)
+  (only-in "contracts.rkt" define/typed lambda/typed λ/typed λtype λtyped?)
+  (only-in "utils.rkt" gensym))
 
-(provide define/unbound rules->assertions)
+(provide define/unbound define/unbound/higher
+         lambda/unbound λ/unbound
+         define/typed lambda/typed λ/typed
+         define/predicate lambda/predicate λ/predicate
+         λtype λtyped?)
 
+; Declares new function that will be encoded into a system of Horn clauses and solved by Horn solver.
+; No actual body invocation will be performed when unbound function is called. Instead fresh symbolic
+; constant will be returned. Also all variables that can mutate in any execution branch of unbound
+; function will be "symbolized" (their values will be set to fresh symbolic contants).
+; The body of a function will be executed in speculated environment when function is called for a first
+; time. The body will be executed once if function is non-recursive or mutually recursive and twice
+; otherwise.
 (define-syntax (define/unbound stx)
-  (syntax-parse stx
+  (syntax-case stx ()
     [(_ (head args ...) type body body-rest ...)
      (quasisyntax/loc stx
-       (define (head args ...)
-         (cond
-           [(already-speculated? #'head)
-            (symbolize #'head (list args ...))]
-           [(speculating-currently? #'head)
-            (symbolize-if-associated #'head (list args ...))]
-           [else
-            (with-call #'head
-              (let* ([head-constant (constant #'head type)]
-                     [_ (free-id-table-set! applicable-constants #'head head-constant)]
-                     [_ (associate-id #'head head-constant)]
-                     [arg-constants (box #f)]
-                     [state/before (state-before-call)]
-                     [state/middle (box #f)]
-                     [term-cache-snapshot (box #f)]
-                     [impl (λ ()
-                               (cond
-                                 [(unbox state/middle)
-                                  (restore-symbolization (unbox state/middle))]
-                                 [else
-                                  (mutables:=symbolic!/track head-constant state/before)
-                                  (set-box! state/middle (create-rollback-point))])
-                               #,@(for/list ([arg (syntax->list #'(args ...))]
-                                             [i (in-naturals)])
-                                    #`(define-symbolic #,arg (i-th-member-of-domain #,i type)))
-                               (set-box! arg-constants (list args ...))
-                               (set-box! term-cache-snapshot (hash-copy (term-cache)))
-                               (let-values ([(term state) (speculate* ((thunk body body-rest ...)))])
-                                 (cons term state)))])
-                (solvable-function->horn-clauses #'head head-constant
-                                                 (list args ...) arg-constants
-                                                 impl term-cache-snapshot)))])))]))
+       (define head
+         #,(make-solvable-function #'#'head
+                                   #'(args ...)
+                                   #'type
+                                   #'(thunk body body-rest ...))))]))
 
-(define (i-th-member-of-domain i type)
-  (let ([domain (solvable-domain type)])
-    (if (< i (length domain))
-        (list-ref domain i)
-        (error 'define "Too many arguments!"))))
+; define/unbound/higher acts like define/unbound, but instantiates horn-clauses for each new set
+; of functions passed as parameters. Those functions should not be contained in args, instead
+; they should be passed separately (just before normal arguments specification).
+; In case when functions are not specified instantiates new clauses each time when called.
+(define-syntax (define/unbound/higher stx)
+  (syntax-case stx ()
+    [(_ head (functions ...) (args ...) type body body-rest ...)
+     (quasisyntax/loc stx
+       (define head
+         (instantiate-high-order-solvable-function
+          'head
+          (list functions ...)
+          (thunk
+           #,(make-solvable-function #'(datum->syntax #f (gensym (syntax->datum #'head)))
+                                     #'(args ...)
+                                     #'type
+                                     #'(thunk body body-rest ...)
+                                     (symbol->string (syntax->datum #'head)))))))]))
 
-(define-syntax-rule (speculate/symbolized body)
-  (let-values ([(pair _) (speculate* body)])
-    (values (car pair) (cdr pair))))
+; Like define/unbound, but returns a lambda-expression.
+(define-syntax (lambda/unbound stx)
+  (syntax-case stx ()
+    [(_ (args ...)  type body body-rest ...)
+     (quasisyntax/loc stx
+       #,(make-solvable-function #'(datum->syntax #f (gensym (syntax->datum #'λ)))
+                                 #'(args ...)
+                                 #'type
+                                 #'(thunk body body-rest ...)))]))
 
-(define (already-speculated? id) (and (dict-has-key? applicable-constants id) (not (called? id))))
-(define (speculating-currently? id) (called? id))
-(define (call-tree-root?) (equal? (stack-size) 2))
+; Shorthand for lambda/unbound.
+(define-syntax λ/unbound (make-rename-transformer #'lambda/unbound))
 
-(define applicable-constants (make-free-id-table))
-(define delimited-encodings (make-parameter (list)))
-(define current-state-before-call (make-parameter #f))
+; Like define/typed, but only argument types are specified. The range will be always boolean?.
+(define-syntax-rule (define/predicate (head args ...) (arg-types ...) body body-rest ...)
+  (define/typed (head args ...) (~> arg-types ... @boolean?)
+    body
+    body-rest ...))
 
-(define (state-before-call)
-  (when (call-tree-root?)
-    (current-state-before-call (create-rollback-point)))
-  (current-state-before-call))
+; Like lambda/typed, but only argument types are specified. The range will be always boolean?.
+(define-syntax-rule (lambda/predicate (args ...) (arg-types ...) body body-rest ...)
+  (lambda/typed (args ...) (~> arg-types ... @boolean?)
+    body
+    body-rest ...))
 
-(define (symbolize head args)
-  (let ([constants (mutables:=symbolic!/memorize (write-dependencies-states head))]
-        [head-constant (free-id-table-ref applicable-constants head)])
-    (unless (null? constants)
-      (printf "Resulting constants: ~a\n" constants))
-    (function-application->symbolic-constant head-constant
-                                             args
-                                             (read-dependencies/current head-constant)
-                                             constants)))
-
-(define (symbolize-if-associated head args)
-  (let ([head-constant (free-id-table-ref applicable-constants head)])
-    (if (read-dependencies-ready? head)
-        (let ([constants (mutables:=symbolic!/memorize (write-dependencies-states head-constant))])
-          (expression dependent-app
-                      (apply head-constant args)
-                      (read-dependencies/current head-constant)
-                      constants))
-        (with-call head
-          (constant (gensym) (solvable-range (type-of head-constant)))))))
-
-(define (solvable-function->horn-clauses head head-constant
-                                         args arg-constants
-                                         body term-cache-snapshot)
-  (define-values (term state/after) (speculate/symbolized (body)))
-   ; TODO: make it more effective
-  (define scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
-  (set-up-read-dependencies head-constant term (unbox arg-constants) scoped-constants state/after)
-  (set-up-write-dependencies head-constant state/after)
-  (define (delimited-encoding)
-    (when (recursive? head)
-      ; For recusive functions we need second execution, because we know set of write-dependencies only now.
-      (set!-values (term state/after) (speculate/symbolized (body)))
-      (set! scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
-      (set-up-write-dependencies head-constant state/after))
-    (eval/horn term
-               head-constant
-               (unbox arg-constants)
-               (set-subtract scoped-constants (list->set (unbox arg-constants)))))
-  (cond [(recursive? head)
-         (delimited-encodings (cons delimited-encoding (delimited-encodings)))
-         (cond
-           [(mutual-recursion-root?)
-            (eval-delimited-encodings head args)
-            (symbolize head args)]
-           [else
-            (constant (gensym) (solvable-range (type-of head-constant)))])]
-        [else
-         (delimited-encoding)
-         (symbolize head args)]))
-
-
-(define (eval-delimited-encodings head args)
-  (for ([enc (reverse (delimited-encodings))]) (enc))
-  (delimited-encodings (list)))
+; Shorthand for lambda/predicate.
+(define-syntax λ/predicate (make-rename-transformer #'lambda/predicate))

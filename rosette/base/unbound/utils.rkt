@@ -1,8 +1,9 @@
 #lang racket
 
-(require (only-in "../core/term.rkt" expression constant type-applicable?))
+(require racket/splicing
+         (only-in "../core/term.rkt" expression constant type-applicable?))
 
-(provide (all-defined-out))
+(provide (all-defined-out) gensym)
 
 ; Calls proc for all possible combinations of list-of-lists, returns a list
 ; of all results that those calls produced. If list-of-lists is empty then
@@ -24,8 +25,9 @@
 ; Returns a set of all symbolic constants of term t.
 (define (term->constants t)
   (match t
-    [(expression op args ...) (terms->constants args)]
+    [(expression _ args ...) (terms->constants args)]
     [(constant _ type) (if (type-applicable? type) (set) (set t))]
+    [(? list?) (terms->constants t)]
     [_ (set)]))
 
 ; Returns a set of all symbolic constants of terms ts.
@@ -41,3 +43,14 @@
   (let ([values1 (list->set (filter filter-func (hash-values hash1)))]
         [values2 (list->set (filter filter-func (hash-values hash2)))])
     (set-subtract values1 values2)))
+
+; Overloads racket gensym to simplify generated values. For each
+; base it will return symbols starting from 1, thus identifiers
+; will be more readable. Should be used only for convenience of debug!
+; For releases this override should be return vanilla gensym values
+; to exclude collision probability (definition can just be commented out for that).
+(splicing-let ([gensym-cache (make-hash)])
+  (define (gensym [base 'g])
+    (let ([suffix (add1 (hash-ref gensym-cache base 0))])
+      (hash-set! gensym-cache base suffix)
+      (string->symbol (format "~a~a" base suffix)))))

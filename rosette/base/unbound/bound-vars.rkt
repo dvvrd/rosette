@@ -12,7 +12,8 @@
 (require
   racket/syntax
   (only-in "../core/term.rkt" constant constant? expression type-of)
-  (only-in "relation.rkt" relation?))
+  (only-in "relation.rkt" relation?)
+  (only-in "utils.rkt" term->constants))
 
 (provide bound-var? share-vars)
 
@@ -21,10 +22,15 @@
 (define common-bound-vars-count (make-parameter 0))
 
 (define (bound-var? v)
-  (and (constant? v) (string-suffix? (format "~a" v) bound-var-suffix)))
+  (and (constant? v) (string-suffix? (~a v) bound-var-suffix)))
 
-(define (share-vars bound-vars term)
-  (substitute/constants (common-vars-substitution bound-vars) term))
+(define (share-vars terms)
+  (map share-vars/one terms))
+
+(define (share-vars/one term)
+  (substitute/constants
+   (common-vars-substitution (term->constants term))
+   term))
 
 (define (substitute/constants subst t)
   (match t
