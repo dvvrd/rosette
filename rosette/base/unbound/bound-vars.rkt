@@ -35,10 +35,12 @@
 (define (substitute/constants subst t)
   (match t
     [(expression op args ...)
-     (let ([args (map (curry substitute/constants subst) args)])
-       (apply expression `(,op ,@args)))]
+     (let ([new-args (map (curry substitute/constants subst) args)])
+       (cond [(equal? args new-args) t]
+             [else (apply expression `(,op ,@new-args))]))]
     [(? relation?) t]
     [(constant _ _) (hash-ref subst t t)]
+    [(list _ ...) (map (curry substitute/constants subst) t)]
     [_ t]))
 
 (define (fill-in-insufficient common-vars n type)

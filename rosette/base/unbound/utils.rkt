@@ -44,6 +44,17 @@
         [values2 (list->set (filter filter-func (hash-values hash2)))])
     (set-subtract values1 values2)))
 
+; Replaces all occurences of keys-of-subst into term with corresponding values.
+(define (substitute/constants subst t)
+  (match t
+    [(expression op args ...)
+     (let ([new-args (map (curry substitute/constants subst) args)])
+       (cond [(equal? args new-args) t]
+             [else (apply expression `(,op ,@new-args))]))]
+    [(constant _ _) (if (hash-has-key? subst t) (hash-ref subst t t) t)]
+    [(list _ ...) (map (curry substitute/constants subst) t)]
+    [_ t]))
+
 ; Overloads racket gensym to simplify generated values. For each
 ; base it will return symbols starting from 1, thus identifiers
 ; will be more readable. Should be used only for convenience of debug!

@@ -33,7 +33,7 @@
   (only-in "../core/term.rkt" constant expression type-of)
   (only-in "auto-constants.rkt" auto-premises)
   (only-in "relation.rkt" fresh-relation)
-  (only-in "utils.rkt" for**/list gensym))
+  (only-in "utils.rkt" for**/list gensym substitute/constants))
 
 (provide deferred-merge merge/folds)
 
@@ -194,7 +194,7 @@
            (values (cons base bases)
                    (cons body bodies)
                    (append read-deps product-read-dependencies)
-                   (cons new-acc product-accumulators)
+                   (cons (cons acc new-acc) product-accumulators)
                    (append write-deps product-write-dependencies)
                    (cons new-acc product-results)))))
 
@@ -215,14 +215,16 @@
          [(conclusions) (map horn-clause-conclusion clauses)]
          [(folds premises)
           (for/lists (l1 l2) ([premises premises*]
-                              [f group])
-            (partition (λ (p) (equal? f (term->fold-id p))) (set->list premises)))]
+                              [f group]
+                              [acc-pair accumulators])
+            (partition (λ (p) (equal? f (term->fold-id p)))
+                       (set-map premises (curry substitute/constants (make-hash (list acc-pair))))))]
          [(premises-union) (foldl (λ (p acc) (set-union acc (list->set p))) (set) premises)]
          [(folds) (map (λ (f) (assert (= 1 (length f))) (car f)) folds)]
          [(resulting-premises)
           (set-add premises-union
                    (merge/fold-applications pfold folds decomposers))]
-         [(resulting-conclusion) (merge/fold-applications pfold folds decomposers accumulators)]
+         [(resulting-conclusion) (merge/fold-applications pfold folds decomposers (map cdr accumulators))]
          [(product-application) (merge/fold-applications pfold fold-application-terms decomposers)])
       (for ([term fold-application-terms])
         (hash-set! folds-substitution term product-application))
@@ -237,7 +239,7 @@
           [(bases bodies read-deps accumulators write-deps results)
            (mine-folds-args-and-bases! decomposers)]
           [(bases accumulators results) (values (reverse bases) (reverse accumulators) (reverse results))]
-          [(product-args) `(,@read-deps ,@accumulators ,lst ,@write-deps ,@results)]
+          [(product-args) `(,@read-deps ,@(map cdr accumulators) ,lst ,@write-deps ,@results)]
           [(product-fold) (fresh-relation (gensym "⊕fold") (map type-of product-args))]
           [(new-base) (horn-clause (apply set-union (map horn-clause-premises bases))
                                    (apply product-fold product-args))]
