@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 ; TODO: interesting observation: if we increment x on 1 each iteration
 ; and try to prove x = y after all spacer can't accomplish it, though
 ; it solves current query (intuitively harder one)!
@@ -22,5 +24,15 @@
   (cond [(<= n 0) 0]
         [else (g (sub1 n))]))
 
-(verify/unbound (assert (and (zero? (f n)) (equal? x (+ y y)))))
-(verify/unbound (assert (and (zero? (f n)) (equal? x (* 2 y)))))
+(define mutual-recursion1-tests
+  (test-suite+
+   "[unbound] Tests for lra/mutual-recursion1.rkt"
+
+   (check-unsat
+    (verify/unbound (assert (and (zero? (f n)) (equal? x (+ y y))))))
+   (check-unsat
+    (verify/unbound (assert (and (zero? (f n)) (equal? (abs x) (* 2 y))))))
+   (check-sat
+    (verify/unbound (assert (and (zero? (f n)) (equal? (add1 x) (* 2 y))))))))
+
+(time (run-tests mutual-recursion1-tests))

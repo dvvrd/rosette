@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 (current-bitwidth #f)
 
 (define/unbound (a m n) (~> integer? integer? integer?)
@@ -10,5 +12,12 @@
 
 
 (define-symbolic n m integer?)
-(verify/unbound (assert (> (a m n) n)))
-(verify/unbound (assert (> (a m n) 0)))
+
+(define ackerman-tests
+  (test-suite+
+   "[unbound] Tests for lra/ackerman.rkt"
+
+   (check-unsat (verify/unbound (assert (> (a m n) n))))
+   (check-sat (verify/unbound (assert (> (a m n) 0))))))
+
+(time (run-tests ackerman-tests))

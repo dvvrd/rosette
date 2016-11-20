@@ -1,6 +1,6 @@
 #lang rosette/unbound
 
-; Expecting unsat and sat
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
 
 (current-bitwidth #f)
 
@@ -11,5 +11,14 @@
         [else 0]))
 
 (define-symbolic m integer?)
-(verify/unbound (assert (>= (f m) 0)))
-(verify/unbound (assert (> (f m) 0)))
+
+(define positive-sum2-tests
+  (test-suite+
+   "[unbound] Tests for lra/positive-sum2.rkt"
+
+   (check-unsat
+    (verify/unbound (assert (>= (f m) 0))))
+   (check-sat
+    (verify/unbound (assert (> (f m) 0))))))
+
+(time (run-tests positive-sum2-tests))

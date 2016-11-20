@@ -1,6 +1,6 @@
 #lang rosette/unbound
 
-; Expecting unsat and unsat
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
 
 (current-bitwidth #f)
 
@@ -13,8 +13,23 @@
 (define-symbolic a b boolean?)
 (define-symbolic x y integer?)
 
-(verify/unbound #:assume (assert (and a (not b)))
-                #:guarantee (assert (or (id/boolean a) (id/boolean b))))
+(define or-tests
+  (test-suite+
+   "[unbound] Tests for lra/or.rkt"
 
-(verify/unbound #:assume (assert (and (positive? x) (positive? y)))
-                #:guarantee (assert (positive? (+ (id/integer x) (id/integer y)))))
+   (check-unsat
+    (verify/unbound #:assume (assert (and a (not b)))
+                    #:guarantee (assert (or (id/boolean a) (id/boolean b)))))
+
+   (check-unsat
+    (verify/unbound #:assume (assert (and (positive? x) (positive? y)))
+                    #:guarantee (assert (positive? (+ (id/integer x) (id/integer y))))))
+
+   (check-sat
+    (verify/unbound (assert (positive? (+ (id/integer x) (id/integer y))))))
+
+   (check-sat
+    (verify/unbound #:assume (assert (and (not (negative? x)) (not (negative? y))))
+                    #:guarantee (assert (positive? (+ (id/integer x) (id/integer y))))))))
+
+(time (run-tests or-tests))

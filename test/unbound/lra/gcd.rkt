@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 (current-bitwidth #f)
 (define-symbolic n m integer?)
 
@@ -9,6 +11,14 @@
         [(zero? m) n]
         [else (gcd m (- n m))]))
 
-(gcd 30 75)
-(verify/unbound #:assume (assert (and (> n 0) (> m 0)))
-                #:guarantee (assert (> (gcd m n) 0)))
+(define gcd-tests
+  (test-suite+
+   "[unbound] Tests for lra/gcd.rkt"
+
+   (check-unsat
+    (verify/unbound #:assume (assert (and (> n 0) (> m 0)))
+                    #:guarantee (assert (> (gcd m n) 0))))
+
+   (check-sat (verify/unbound (assert (> (gcd m n) 0))))))
+
+(time (run-tests gcd-tests))

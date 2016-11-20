@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 (current-bitwidth #f)
 
 (define-symbolic n integer?)
@@ -12,7 +14,7 @@
 (define/unbound (f n) (~> integer? integer?)
   (cond
     [(> n 0) (set! y (+ y n))
-             (f (g (- n 1)))]
+             (abs (g (- n 1)))]
     [else y]))
 
 (define/unbound (g n) (~> integer? integer?)
@@ -26,4 +28,14 @@ y
 x
 y
 
-(verify/unbound (assert (and (> (f n) 0) (> y 0))))
+(define mutations1-tests
+  (test-suite+
+   "[unbound] Tests for lra/mutations1.rkt"
+
+   (check-unsat
+    (verify/unbound (assert (and (>= (f n) 0) (> y 0)))))
+
+   (check-sat
+    (verify/unbound (assert (and (> (f n) 0) (> y 1)))))))
+
+(time (run-tests mutations1-tests))

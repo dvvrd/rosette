@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 (current-bitwidth #f)
 
 (define-symbolic n sum1 integer?)
@@ -18,4 +20,13 @@
 
 (sum n)
 
-(verify/unbound (assert (>= sum1 0)))
+(define mutations2-tests
+  (test-suite+
+   "[unbound] Tests for lra/mutations2.rkt"
+
+   (check-unsat
+    (verify/unbound (assert (>= sum1 0))))
+   (check-sat
+    (verify/unbound (assert (> sum1 0))))))
+
+(time (run-tests mutations2-tests))

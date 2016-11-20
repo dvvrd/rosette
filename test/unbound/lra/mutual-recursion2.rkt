@@ -1,5 +1,7 @@
 #lang rosette/unbound
 
+(require rackunit rackunit/text-ui rosette/lib/roseunit)
+
 (current-bitwidth #f)
 
 (define-symbolic n integer?)
@@ -26,5 +28,13 @@ y
 x
 y
 
-(verify/unbound (assert (and (>= (f n) 0) (>= y 0))))
-(verify/unbound (assert (and (> (f n) 0) (> y 0))))
+(define mutual-recursion2-tests
+  (test-suite+
+   "[unbound] Tests for lra/mutual-recursion2.rkt"
+
+   (check-unsat
+    (verify/unbound (assert (and (>= (f n) 0) (>= y 0)))))
+   (check-sat
+    (verify/unbound (assert (and (> (f n) 0) (> y 0)))))))
+
+(time (run-tests mutual-recursion2-tests))
