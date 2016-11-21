@@ -181,6 +181,7 @@
                [bodies '()]
                [product-read-dependencies '()]
                [product-accumulators '()]
+               [product-lst #f]
                [product-write-dependencies '()]
                [product-results '()])
               ([f group])
@@ -195,16 +196,27 @@
                    (cons body bodies)
                    (append read-deps product-read-dependencies)
                    (cons (cons acc new-acc) product-accumulators)
+                   (begin
+                     (and product-lst
+                          (assert (equal? product-lst xs)
+                                  (thunk (error 'merge/folds
+                                                "Merging folds with different list arguments: expected ~a, got ~a!"
+                                                product-lst xs))))
+                     xs)
                    (append write-deps product-write-dependencies)
                    (cons new-acc product-results)))))
 
   (define (merge/fold-applications product-rel folds decomposers [accumulators #f])
-    (define-values (read-depss accs _ write-depss results)
+    (define-values (read-depss accs lsts write-depss results)
       (for/lists (l1 l2 l3 l4 l5) ([f folds] [g group])
         ((hash-ref decomposers g) f)))
+    (assert (and (not (empty? lsts)) (apply equal? lsts))
+            (thunk (error 'merge/folds
+                          "Merging folds with invalid list arguments: ~a!"
+                          lsts)))
     (apply product-rel `(,@(apply append read-depss)
                          ,@(or accumulators accs)
-                         ,lst
+                         ,(car lsts)
                          ,@(apply append write-depss)
                          ,@results)))
   
@@ -224,7 +236,7 @@
          [(resulting-premises)
           (set-add premises-union
                    (merge/fold-applications pfold folds decomposers))]
-         [(resulting-conclusion) (merge/fold-applications pfold folds decomposers (map cdr accumulators))]
+         [(resulting-conclusion) (merge/fold-applications pfold conclusions decomposers (map cdr accumulators))]
          [(product-application) (merge/fold-applications pfold fold-application-terms decomposers)])
       (for ([term fold-application-terms])
         (hash-set! folds-substitution term product-application))
@@ -236,10 +248,10 @@
     [_
      (let*-values
          ([(decomposers) (make-hash)]
-          [(bases bodies read-deps accumulators write-deps results)
+          [(bases bodies read-deps accumulators lst-param write-deps results)
            (mine-folds-args-and-bases! decomposers)]
           [(bases accumulators results) (values (reverse bases) (reverse accumulators) (reverse results))]
-          [(product-args) `(,@read-deps ,@(map cdr accumulators) ,lst ,@write-deps ,@results)]
+          [(product-args) `(,@read-deps ,@(map cdr accumulators) ,lst-param ,@write-deps ,@results)]
           [(product-fold) (fresh-relation (gensym "⊕fold") (map type-of product-args))]
           [(new-base) (horn-clause (apply set-union (map horn-clause-premises bases))
                                    (apply product-fold product-args))]

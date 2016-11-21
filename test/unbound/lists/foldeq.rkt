@@ -19,5 +19,4 @@
    (check-sat
     (verify/unbound (assert (= (abs a) b))))))
 
-
 (time (run-tests foldeq-tests))
