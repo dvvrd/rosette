@@ -2,7 +2,7 @@
 
 (require (except-in "safe.rkt"
                     list list? null null? length car cdr
-                    foldl map append
+                    foldl map andmap ormap append
                     caar cadr cdar cddr
                     caaar caadr cadar caddr cdaar cdadr cddar cdddr
                     caaaar caaadr caadar caaddr cadaar cadadr caddar cadddr

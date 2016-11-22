@@ -2,6 +2,7 @@
 
 (require
   racket/syntax
+  (only-in "../core/bool.rkt" && || ! @&& @|| @!)
   (only-in "../core/term.rkt"
            constant constant? expression @app
            type-of solvable-domain solvable-range type-applicable?)
@@ -103,6 +104,15 @@
                           (parameterize ([current-premises (set-add (current-premises) g)])
                             (term->horn-clauses tail-position? v))))
                       gvs))]
+    [(or (expression (== @||) (expression (== @&&) c t) (expression (== @&&) (expression (== @!) c) e))
+         (expression (== @||) (expression (== @&&) c t) (expression (== @&&) e (expression (== @!) c)))
+         (expression (== @||) (expression (== @&&) (expression (== @!) c) e) (expression (== @&&) c t))
+         (expression (== @||) (expression (== @&&) (expression (== @!) c) e) (expression (== @&&) t c))
+         (expression (== @||) (expression (== @&&) t c) (expression (== @&&) (expression (== @!) c) e))
+         (expression (== @||) (expression (== @&&) t c) (expression (== @&&) e (expression (== @!) c)))
+         (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) c t))
+         (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) t c)))
+     (term->horn-clauses tail-position? (expression ite c t e))]
     [(expression op args ...)
      (let* ([args (terms->horn-clauses args)]
             [result (apply expression `(,op ,@args))])

@@ -19,7 +19,7 @@
      spacer spacer?
      ; list.rkt
      @list @list? @null @null? @length @car @cdr
-     @foldl @map @append
+     @foldl @map @andmap @ormap @append
      @listof @listof? @element-type
      @caar @cadr @cdar @cddr
      @caaar @caadr @cadar @caddr @cdaar @cdadr @cddar @cdddr

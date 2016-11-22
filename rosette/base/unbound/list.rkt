@@ -7,7 +7,7 @@
   (prefix-in bound/ "../adt/list.rkt")
   (only-in "../adt/seq.rkt" lift/apply/higher-order)
   (only-in "../form/control.rkt" @cond @if)
-  (only-in "../core/bool.rkt" instance-of? || &&)
+  (only-in "../core/bool.rkt" instance-of? || && @boolean?)
   (only-in "../core/function.rkt" ~>)
   (only-in "../core/lift.rkt" lift-id unsafe-merge**)
   (only-in "../core/merge.rkt" merge* unsafe-merge*)
@@ -140,6 +140,12 @@
                [(= i 0) (λ/typed (x y) (~> (car g-domain) (cadr f-domain) f-range) (f (g x) y))]
                [(= i 1) (λ/typed (x y) (~> (car f-domain) (car g-domain)  f-range) (f x (g y)))])]
       [(_ _) (error caller "Working with multiple lists is not supported yet")])))
+
+(define-syntax-rule (λ-convert caller fun (args ...) type-convert body body-rest ...)
+  (cond [(λtyped? fun)
+         (λ/typed (args ...) (type-convert (λtype fun caller)) body body-rest ...)]
+        [else
+         (λ (args ...) body body-rest ...)]))
 
 (define-operator mapped
   #:identifier 'mapped
@@ -346,6 +352,22 @@
     [(? list/unbound/exactly?) (expression mapped proc lst)]
     [(union _) (apply/union/higher-order map @map proc lst)]
     [_ (raise-argument-error 'map "list" lst)]))
+
+(define-syntax (define-op-map stx)
+  (syntax-case stx ()
+    [(_ lifted-op op default)
+     (with-syntax ([id (format-id stx "@~amap" (syntax->datum #'op))])
+       (quasisyntax/loc stx
+         (define (id pred lst)
+           (@foldl (λ-convert 'id pred
+                              (elem acc)
+                              (λ (t) (apply ~> `(,@(solvable-domain t) , @boolean? , @boolean?)))
+                              (lifted-op acc (pred elem)))
+                   default
+                   lst))))]))
+
+(define-op-map && and #t)
+(define-op-map || or  #f)
 
 ;; ----------------- Elimination from solver encoding ----------------- ;;
 

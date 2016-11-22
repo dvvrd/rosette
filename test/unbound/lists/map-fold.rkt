@@ -7,6 +7,10 @@
 
 (define/typed (add1 x) (~> integer? integer?) (+ x 1))
 (define/typed (+/typed x y) (~> integer? integer? integer?) (+ x y))
+(define/predicate (even?/typed x) (integer?) (even? x))
+
+(define ys (map (λ/typed (x) (~> integer? integer?) (+ x x)) xs))
+(define zs (map (λ/typed (x) (~> integer? integer?) (+ x x x)) xs))
 
 (define map-fold-tests
   (test-suite+
@@ -24,6 +28,12 @@
         (assert
          (= (foldl +/typed 1 (map add1 xs))
             (+ (foldl +/typed 0 xs)
-               (length xs))))))))
+               (length xs))))))
+
+      (check-unsat
+       (verify/unbound (assert (andmap even?/typed ys))))
+
+      (check-sat
+       (verify/unbound (assert (andmap even?/typed zs))))))
 
 (time (run-tests map-fold-tests))
