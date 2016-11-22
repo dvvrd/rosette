@@ -35,7 +35,20 @@
   (only-in "relation.rkt" fresh-relation)
   (only-in "utils.rkt" for**/list gensym substitute/constants))
 
-(provide deferred-merge merge/folds)
+(provide deferred-merge merge/folds
+         set-length-getter! set-car-getter! set-cdr-getter!)
+
+; TODO: get rid of it!
+(define (set-length-getter! getter)
+  (set! @length getter))
+(define (set-car-getter! getter)
+  (set! @car getter))
+(define (set-cdr-getter! getter)
+  (set! @cdr getter))
+
+(define (@length lst) (error 'length "@length getter was not passed to fold.rkt!"))
+(define (@car lst) (error 'length "@car getter was not passed to fold.rkt!"))
+(define (@cdr lst) (error 'length "@cdr getter was not passed to fold.rkt!"))
 
 (define folds-of-lists (make-hash))
 (define lists-of-folds (make-hash))
@@ -129,16 +142,16 @@
   (match (horn-clause-conclusion clause)
     [(fold-expression id args ...)
      (and (fold? id args)
-          (equal? (~a (last args)) "init"))]
+          (string-prefix? (~a (last args)) "init"))]
     [_ #f]))
 
 (define (decompose-fold-params clause)
   (define (index-of xs proc)
     (for/or ([x xs] [i (in-naturals)] #:when (proc x)) i))
   (define (accumulator? arg)
-    (equal? (~a arg) "init"))
+    (string-prefix? (~a arg) "init"))
   (define (folded-list? arg)
-    (equal? (~a arg) "lst"))
+    (string-prefix? (~a arg) "lst"))
 
   (match (horn-clause-conclusion clause)
     [(fold-expression id args ...)
@@ -181,7 +194,7 @@
                [bodies '()]
                [product-read-dependencies '()]
                [product-accumulators '()]
-               [product-lst #f]
+               [product-lst '()]
                [product-write-dependencies '()]
                [product-results '()])
               ([f group])
@@ -189,54 +202,43 @@
                        [(base body) (partition fold-base-clause? definitions)]
                        [(base) (begin (assert (= 1 (length base))) (car base))]
                        [(decomposer) (decompose-fold-params base)]
-                       [(read-deps acc xs write-deps result) (decomposer (horn-clause-conclusion base))]
-                       [(new-acc) (constant (gensym (~a acc)) (type-of acc))])
+                       [(read-deps acc xs write-deps result) (decomposer (horn-clause-conclusion base))])
            (hash-set! decomposers f decomposer)
            (values (cons base bases)
                    (cons body bodies)
                    (append read-deps product-read-dependencies)
-                   (cons (cons acc new-acc) product-accumulators)
-                   (begin
-                     (and product-lst
-                          (assert (equal? product-lst xs)
-                                  (thunk (error 'merge/folds
-                                                "Merging folds with different list arguments: expected ~a, got ~a!"
-                                                product-lst xs))))
-                     xs)
+                   (cons acc product-accumulators)
+                   (cons xs product-lst)
                    (append write-deps product-write-dependencies)
-                   (cons new-acc product-results)))))
+                   (cons acc product-results)))))
 
   (define (merge/fold-applications product-rel folds decomposers [accumulators #f])
     (define-values (read-depss accs lsts write-depss results)
       (for/lists (l1 l2 l3 l4 l5) ([f folds] [g group])
         ((hash-ref decomposers g) f)))
-    (assert (and (not (empty? lsts)) (apply equal? lsts))
-            (thunk (error 'merge/folds
-                          "Merging folds with invalid list arguments: ~a!"
-                          lsts)))
     (apply product-rel `(,@(apply append read-depss)
                          ,@(or accumulators accs)
                          ,(car lsts)
                          ,@(apply append write-depss)
                          ,@results)))
   
-  (define (merge/fold-bodies pfold decomposers accumulators clauses)
+  (define (merge/fold-bodies pfold decomposers accumulators lst-param lsts-substitution clauses)
     (assert (equal? group (map clause->fold-id clauses)))
     (let*-values
         ([(premises*) (map horn-clause-premises clauses)]
          [(conclusions) (map horn-clause-conclusion clauses)]
          [(folds premises)
           (for/lists (l1 l2) ([premises premises*]
-                              [f group]
-                              [acc-pair accumulators])
+                              [f group])
             (partition (λ (p) (equal? f (term->fold-id p)))
-                       (set-map premises (curry substitute/constants (make-hash (list acc-pair))))))]
+                       (set-map premises (curry substitute/constants lsts-substitution))))]
          [(premises-union) (foldl (λ (p acc) (set-union acc (list->set p))) (set) premises)]
          [(folds) (map (λ (f) (assert (= 1 (length f))) (car f)) folds)]
          [(resulting-premises)
           (set-add premises-union
                    (merge/fold-applications pfold folds decomposers))]
-         [(resulting-conclusion) (merge/fold-applications pfold conclusions decomposers (map cdr accumulators))]
+         [(resulting-conclusion) (substitute/constants lsts-substitution
+                                  (merge/fold-applications pfold conclusions decomposers accumulators))]
          [(product-application) (merge/fold-applications pfold fold-application-terms decomposers)])
       (for ([term fold-application-terms])
         (hash-set! folds-substitution term product-application))
@@ -248,14 +250,21 @@
     [_
      (let*-values
          ([(decomposers) (make-hash)]
-          [(bases bodies read-deps accumulators lst-param write-deps results)
+          [(bases bodies read-deps accumulators lsts write-deps results)
            (mine-folds-args-and-bases! decomposers)]
           [(bases accumulators results) (values (reverse bases) (reverse accumulators) (reverse results))]
-          [(product-args) `(,@read-deps ,@(map cdr accumulators) ,lst-param ,@write-deps ,@results)]
+          [(lst-param) (constant (gensym lst) (type-of (car lsts)))]
+          [(lsts-substitution) (make-hash (append (map (λ (l) (cons l lst-param)) lsts)
+                                                  (map (λ (l) (cons (@length l) (@length lst-param))) lsts)
+                                                  (map (λ (l) (cons (@car l #f) (@car lst-param #f))) lsts)
+                                                  (map (λ (l) (cons (@cdr l #f) (@cdr lst-param #f))) lsts)))]
+          [(product-args) `(,@read-deps ,@accumulators ,lst-param ,@write-deps ,@results)]
           [(product-fold) (fresh-relation (gensym "⊕fold") (map type-of product-args))]
-          [(new-base) (horn-clause (apply set-union (map horn-clause-premises bases))
+          [(new-base) (horn-clause (list->set
+                                    (set-map (apply set-union (map horn-clause-premises bases))
+                                             (curry substitute/constants lsts-substitution)))
                                    (apply product-fold product-args))]
-          [(body-clauses) (for**/list (reverse bodies) (curry merge/fold-bodies product-fold decomposers accumulators))])
+          [(body-clauses) (for**/list (reverse bodies) (curry merge/fold-bodies product-fold decomposers accumulators lst-param lsts-substitution))])
        `(,new-base ,@body-clauses ,@clauses))]))
 
 (define (merge/folds clauses)

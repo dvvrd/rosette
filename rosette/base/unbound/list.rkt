@@ -16,7 +16,7 @@
   (only-in "../core/union.rkt" union in-union-guards union-guards union-filter union-contents)
   (only-in "auto-constants.rkt" register-auto-constant)
   (only-in "dependencies.rkt" gen:implicitly-dependent)
-  (only-in "fold.rkt" deferred-merge merge/folds)
+  (only-in "fold.rkt" deferred-merge merge/folds set-length-getter! set-car-getter! set-cdr-getter!)
   (only-in "horn.rkt" gen:horn-transformer register-horn-transformer)
   (only-in "lemmas.rkt" associative?)
   (only-in "relation.rkt" relation?))
@@ -245,8 +245,8 @@
                                                        (@element-type lst)
                                                        (@- l 1))]
                        [fresh-list (cons fresh-head fresh-tail)])
-                  (assert-bound (0 @< l) 'id)
                   (when update?
+                    (assert-bound (0 @< l) 'id)
                     (update-lst fresh-list))
                   (id fresh-list))]
                [(union vs)
@@ -261,6 +261,10 @@
 (define-list-decomposer cdr
   #:mapper (λ (proc xs) (@map proc (@cdr xs)))
   #:appender (λ (xs ys) (@if (@null? xs) (@cdr ys) (@append (@cdr xs) ys))))
+
+(set-length-getter! @length)
+(set-car-getter! @car)
+(set-cdr-getter! @cdr)
 
 (define-list-processor (append/unsafe xs ys)
   (match* (xs ys)

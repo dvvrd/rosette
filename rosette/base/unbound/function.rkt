@@ -7,9 +7,8 @@
            constant constant? expression type-of
            solvable-domain solvable-range
            term-cache clear-terms!)
-  (only-in "../form/define.rkt" define-symbolic)
   (only-in "contracts.rkt" λ/typed)
-  (only-in "utils.rkt" hash-values-diff+filter)
+  (only-in "utils.rkt" hash-values-diff+filter gensym)
   (only-in "call-graph.rkt" with-call called? stack-size recursive? mutual-recursion-root?)
   "mutations.rkt" "dependencies.rkt" "encoding.rkt")
 
@@ -46,7 +45,7 @@
                                  (set-box! state/middle (create-rollback-point))])
                               #,@(for/list ([arg (syntax->list args)]
                                             [i (in-naturals)])
-                                   #`(define-symbolic #,arg (i-th-member-of-domain #,i type)))
+                                   #`(define #,arg (constant (gensym '#,arg) (i-th-member-of-domain #,i type))))
                               (set-box! arg-constants (list #,@args))
                               (unless (unbox term-cache-snapshot)
                                 (set-box! term-cache-snapshot (hash-copy (term-cache))))
