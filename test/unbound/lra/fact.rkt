@@ -11,7 +11,7 @@
 
 (define/unbound (fact x) (~> integer? integer?)
   (if (= x 0) 1
-      (mult (fact (- x 1)))))
+      (mult x (fact (- x 1)))))
 
 (verify/unbound #:assume    (assert (> x 0))
                 #:guarantee (assert (> (fact x) 0)))
