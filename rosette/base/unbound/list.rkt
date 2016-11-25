@@ -16,7 +16,6 @@
   (only-in "../core/union.rkt" union in-union-guards union-guards union-filter union-contents)
   (only-in "auto-constants.rkt" register-auto-constant)
   (only-in "dependencies.rkt" gen:implicitly-dependent)
-  (only-in "fold.rkt" deferred-merge merge/folds set-length-getter! set-car-getter! set-cdr-getter!)
   (only-in "horn.rkt" gen:horn-transformer register-horn-transformer)
   (only-in "lemmas.rkt" associative?)
   (only-in "relation.rkt" relation?))
@@ -90,7 +89,7 @@
      (fprintf port "listof ~a" (@list-element-type self)))]
   #:methods gen:implicitly-dependent
   [(define (implicit-dependencies self constant)
-     (list (@length constant)))])
+     (list (@length constant) (@car constant) (@cdr constant)))])
 
 ;; ----------------- Storage of information about list constants ----------------- ;;
 
@@ -262,10 +261,6 @@
   #:mapper (λ (proc xs) (@map proc (@cdr xs)))
   #:appender (λ (xs ys) (@if (@null? xs) (@cdr ys) (@append (@cdr xs) ys))))
 
-(set-length-getter! @length)
-(set-car-getter! @car)
-(set-cdr-getter! @cdr)
-
 (define-list-processor (append/unsafe xs ys)
   (match* (xs ys)
     [((? null?) _) ys]
@@ -337,10 +332,10 @@
          (@if #f;(@null? xs)
               (@foldl proc init ys)
               (@foldl proc (@foldl proc (@car xs) (@cdr xs)) ys)))]
-    [(? list/unbound/exactly?)
-     (let ([result (fold/unbound init lst)])
-       (deferred-merge lst result)
-       result)]
+    [(? list/unbound/exactly?) (fold/unbound init lst)]
+;     (let ([result (fold/unbound init lst)])
+;       (deferred-merge lst result)
+;       result)]
     [(union _) (apply/union/higher-order foldl @foldl proc init lst)]
     [_ (raise-argument-error 'foldl "list" lst)]))
 
@@ -378,7 +373,7 @@
 (struct symbolic-lists-eliminator ()
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
-     (merge/folds clauses))
+     (void))
    (define (post-process self terms)
      (parameterize ([current-relations-subst (make-hash)])
        (eliminate* terms)))])
