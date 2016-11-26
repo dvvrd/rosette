@@ -1,3 +1,4 @@
+
 #lang racket
 
 (require racket/dict syntax/id-table syntax/id-set)
@@ -18,13 +19,14 @@
 
 ;; ----------------- Call stack ----------------- ;;
 
-(define current-call-stack (make-parameter (list #'%:main)))
+(define current-call-stack (make-parameter (list (box (cons #'%:main #f)))))
 
 ; Updates the internal information about the call graph evaluating the given bodies.
 (define-syntax-rule (with-call id body body-rest ...)
-  (let ([caller (car (current-call-stack))])
+  (let ([caller (car (unbox (car (current-call-stack))))])
     (detect-recursion id)
-    (parameterize ([current-call-stack (cons id (current-call-stack))])
+    (parameterize ([current-call-stack (cons (box (cons id #f))
+                                             (current-call-stack))])
       (connect caller id)
       body
       body-rest ...)))
@@ -32,7 +34,10 @@
 ; Returns #f if 'id is not currently in a call stack or a tail of a call stack
 ; below the last call of 'id otherwise.
 (define (called? id)
-  (member id (current-call-stack) free-identifier=?))
+  (member id (current-call-stack)
+          (λ (id frame)
+            (free-identifier=? id
+                               (car (unbox frame))))))
 
 ; Returns a number of entries in current call stack. Note that top-level context is also included
 ; into call-stack.
@@ -45,9 +50,18 @@
 
 (define (detect-recursion id)
   (when (called? id)
-    (for ([call (current-call-stack)])
-      #:final (free-identifier=? id call)
-      (free-id-set-add! recursive-functions call))))
+    (let ([mutual-recursion-component
+           (dropf-right (current-call-stack)
+                        (λ (frame)
+                          (not
+                           (free-identifier=?
+                            id
+                            (car (unbox frame))))))])
+      (for ([frame mutual-recursion-component])
+        (free-id-set-add! recursive-functions (car (unbox frame)))
+        (set-box! frame (cons (car (unbox frame)) #f)))
+      (unless (empty? mutual-recursion-component)
+        (set-box! (last mutual-recursion-component) (cons id #t))))))
 
 ; Returns #t if 'id is an identifier of (mutually) recursive function.
 (define (recursive? id)
@@ -58,9 +72,7 @@
 ; In other words, returns #f if and only if current call stack top is call
 ; in the middle of mutually recursive sequence of calls.
 (define (mutual-recursion-root?)
-  (and (>= (length (current-call-stack)) 2)
-       (recursive? (car (current-call-stack)))
-       (not (recursive? (cadr (current-call-stack))))))
+  (cdr (unbox (car (current-call-stack)))))
 
 ;; ----------------- Associations ----------------- ;;
 
