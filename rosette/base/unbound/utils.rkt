@@ -8,6 +8,7 @@
 ; Calls proc for all possible combinations of list-of-lists, returns a list
 ; of all results that those calls produced. If list-of-lists is empty then
 ; a list consisting of (proc '()) returned.
+; TODO: is this just mapping cartesian-product? Test performance!
 (define (for**/list list-of-lists proc)
   (define (for**/list-rec lists proc current result)
     (let ([h (car lists)]

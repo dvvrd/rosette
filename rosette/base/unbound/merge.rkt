@@ -31,6 +31,10 @@
 
 (require
   "horn.rkt"
+  (only-in "../../solver/solution.rkt" unsat?)
+  (only-in "../../query/form.rkt" verify)
+  (only-in "../core/bool.rkt" @! @&& ||)
+  (only-in "../core/equality.rkt" @equal?)
   (only-in "../core/safe.rkt" assert)
   (only-in "../core/term.rkt" constant constant? expression type-of @app)
   (only-in "auto-constants.rkt" auto-premises term->constants/with-auto-premises)
@@ -42,16 +46,24 @@
   [(define (pre-process self clauses)
      (build-dependencies clauses)
      (get-transitive-closure! dependencies-graph)
-     (clear-caches))
+     (clear-caches!))
    (define (post-process self terms) terms)])
 
 (register-horn-transformer (clauses-merger))
 
-;; ----------------- Dependencies ----------------- ;;
 
 (define dependencies-graph (make-hash))
 (define input-constants-cache (make-hash))
 (define output-constants-cache (make-hash))
+(define matchings-cache (make-hash))
+
+(define (clear-caches!)
+  (hash-clear! dependencies-graph)
+  (hash-clear! input-constants-cache)
+  (hash-clear! output-constants-cache)
+  (hash-clear! matchings-cache))
+
+;; ----------------- Dependencies ----------------- ;;
 
 (define (arguments->input-output-constants f-app)
   (if (hash-has-key? input-constants-cache f-app)
@@ -133,7 +145,87 @@
     (for ([v (in-hash-keys g)])
       (dfs/closure v visited))))
 
-(define (clear-caches)
-  (hash-clear! dependencies-graph)
-  (hash-clear! input-constants-cache)
-  (hash-clear! output-constants-cache))
+;; ----------------- Determining synchronized set ----------------- ;;
+
+; Remark: the optimal matching may be obtained by Kuhn algorithm.
+; However, here we match recursive calls, so greedy algo works good
+; for all practical cases.
+(define (match/lists xs ys ω)
+  (hash-ref!
+   matchings-cache (cons xs ys)
+   (thunk
+    (let ([ys-to-match (list->mutable-set ys)]
+          [matching (mutable-set)])
+      (and
+       (for/and ([x xs])
+         (for/or ([y ys])
+           (and (ω x y)
+                (set-add! matching (cons x y))
+                (set-remove! ys-to-match y))))
+       (for/and ([y (in-set ys-to-match)])
+         (for/or ([x (in-set xs)])
+           (and
+            (ω x y)
+            (set-add! matching (cons x y)))))
+       matching)))))
+
+(define (rel-and-args-of application)
+  (match application
+    [(expression (== @app) rel args ...)
+     (values rel args)]
+    [_ (values #f #f)]))
+
+(define (args-of application)
+  (let-values ([(_ args) (rel-and-args-of application)])
+    args))
+
+(define (rel-of application)
+  (let-values ([(rel _) (rel-and-args-of application)])
+    rel))
+
+(define (synchronized-by?/solve f-interpreted-premises g-interpreted-premises f-conclusion-args g-conclusion-args f-args g-args)
+  (let ([premises (map @! `(,@(set->list f-interpreted-premises)
+                            ,@(set->list g-interpreted-premises)
+                            (for/list ([f-arg f-args]
+                                       [g-arg g-args])
+                              (@equal? (list-ref f-conclusion-args f-arg)
+                                       (list-ref g-conclusion-args g-arg)))))])
+    (λ (f-recursive-premise g-recursive-premise)
+      (let* ([f-app-args (args-of f-recursive-premise)]
+             [g-app-args (args-of g-recursive-premise)]
+             [conclusion (apply @&& (for/list ([f-arg f-args]
+                                               [g-arg g-args])
+                                      (@equal? (list-ref f-app-args f-arg)
+                                               (list-ref g-app-args g-arg))))])
+        (unsat?
+         (verify (apply || (cons conclusion premises))))))))
+
+(define (split-premises premises f)
+  (for/fold ([interpreted '()]
+             [linear '()]
+             [recursive '()])
+            ([premise (in-set premises)])
+    (let ([rel (rel-of premise)])
+      (cond
+        [(false? rel)   (values (cons premise interpreted) linear recursive)]
+        [(equal? rel f) (values interpreted linear (cons premise recursive))]
+        [else           (values interpreted (cons premise linear) recursive)]))))
+
+(define (synchronized-by?/clauses f g f-args g-args)
+  (let*-values
+      ([(f-rel f-concl-args) (horn-clause-conclusion f)]
+       [(g-rel g-concl-args) (horn-clause-conclusion g)]
+       [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
+       [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
+       [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
+    (match/lists (cons f-recursive (horn-clause-conclusion f))
+                 (cons g-recursive (horn-clause-conclusion g))
+                 ω)))
+
+(define (synchronized-by?/definitions f g f-args g-args clauses)
+  (or (and (empty? f-args) (empty? g-args))
+      (and (= (length f-args) (length g-args))
+           (independent?/definitions f g)
+           (for*/and ([f-clause (hash-ref clauses f)]
+                      [g-clause (hash-ref clauses g)])
+             (synchronized-by?/clauses f-clause g-clause f-args g-args)))))
