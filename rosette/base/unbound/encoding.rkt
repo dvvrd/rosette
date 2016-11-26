@@ -126,6 +126,19 @@
      (when tail-position? (add-rule t))
      t]))
 
+(define (eliminate-dependent-apps t)
+  (match t
+    [(expression (== dependent-app) (expression (== @app) f args ...) read-deps mutations)
+     (eliminate-dependent-apps
+      (function-application->symbolic-constant f (eliminate-dependent-apps args) read-deps mutations))]
+    [(expression op args ...)
+     (let ([new-args (eliminate-dependent-apps args)])
+       (if (equal? new-args args)
+           t
+           (apply expression `(,op ,@new-args))))]
+    [(list xs ...) (map eliminate-dependent-apps xs)]
+    [_ t]))
+
 (define (terms->horn-clauses ts)
   (map (curry term->horn-clauses #f) ts))
 
@@ -133,7 +146,7 @@
   (let* ([id (gensym 'ε)]
          [ε (constant id (solvable-range (type-of f)))]
          [auto-premise (function-application->relation f read-deps args mutations ε)])
-    (register-auto-constants (cons ε mutations) auto-premise)
+    (register-auto-constants (cons ε mutations) (eliminate-dependent-apps auto-premise))
     ε))
 
 (define (rules->assertions clauses additional-premises)
