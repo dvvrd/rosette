@@ -4,7 +4,8 @@
   (for-syntax racket/syntax (only-in "../core/lift.rkt" drop@))
   racket/provide
   "../base.rkt"
-  "define.rkt" "query.rkt" "list.rkt" "../../solver/smt/spacer.rkt")
+  "define.rkt" "query.rkt" "list.rkt" "merge.rkt"
+  "../../solver/smt/spacer.rkt")
 
 (provide
   (filtered-out drop@

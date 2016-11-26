@@ -13,7 +13,7 @@
   (only-in "mutations.rkt" state->mutations)
   (only-in "utils.rkt" for**/list gensym)
   (only-in "auto-constants.rkt" auto-premises register-auto-constants)
-  "dependencies.rkt" "relation.rkt" "horn.rkt" )
+  "dependencies.rkt" "relation.rkt" "horn.rkt")
 
 (provide @app
          (rename-out [eval-body/horn eval/horn])
@@ -52,7 +52,7 @@
                                                                            (map horn-clause-conclusion clauses)
                                                                            value)))))
               (list (horn-clause (current-premises) value)))])
-    (hash-update! (current-rules) (current-head)
+    (hash-update! (current-rules) (function->relation (current-head))
                   (λ (rules) (append rules resulting-clauses))
                   (list))))
 

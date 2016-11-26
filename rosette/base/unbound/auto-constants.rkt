@@ -2,7 +2,8 @@
 
 (require (only-in "utils.rkt" term->constants))
 
-(provide register-auto-constant register-auto-constants auto-premises)
+(provide register-auto-constant register-auto-constants
+         auto-premises term->constants/with-auto-premises)
 
 (define auto-constants (make-hash))
 
@@ -32,3 +33,12 @@
 
 (define (register-auto-constant constant auto-premise)
   (register-auto-constants (list constant) auto-premise))
+
+(define (term->constants/with-auto-premises t)
+  (let ([first-level-constants (term->constants t)])
+    (apply set-union
+           (cons first-level-constants
+                 (for/list ([const first-level-constants])
+                   (if (hash-has-key? auto-constants const)
+                       (car (hash-ref auto-constants const))
+                       (set)))))))
