@@ -13,5 +13,20 @@
   (if (= x 0) 1
       (mult x (fact (- x 1)))))
 
-(verify/unbound #:assume    (assert (> x 0))
-                #:guarantee (assert (> (fact x) 0)))
+(define inc-tests
+  (test-suite+
+   "[unbound] Tests for lra/fact.rkt"
+
+   (check-unsat
+    (verify/unbound #:assume    (assert (> x 0))
+                    #:guarantee (assert (> (fact x) 0))))
+
+   (check-sat
+    (verify/unbound #:assume    (assert (> x 0))
+                    #:guarantee (assert (> (fact x) x))))
+
+   (check-unsat
+    (verify/unbound #:assume    (assert (>= x 1))
+                    #:guarantee (assert (>= (fact x) x))))))
+
+(time (run-tests inc-tests))
