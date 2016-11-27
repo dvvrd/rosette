@@ -30,38 +30,42 @@
 ; merges only independent folds.
 
 (require
-  "horn.rkt"
+  "horn.rkt" "graph.rkt"
   (only-in "../../solver/solution.rkt" unsat?)
   (only-in "../../query/form.rkt" verify)
   (only-in "../core/bool.rkt" @! @&& ||)
   (only-in "../core/equality.rkt" @equal?)
-  (only-in "../core/safe.rkt" assert)
   (only-in "../core/term.rkt" constant constant? expression type-of @app)
   (only-in "auto-constants.rkt" auto-premises term->constants/with-auto-premises)
-  (only-in "relation.rkt" fresh-relation relation?)
+  (only-in "relation.rkt" fresh-relation relation? decompose-arguments)
   (only-in "utils.rkt" for**/list gensym substitute/constants))
 
 (struct clauses-merger ()
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
      (build-dependencies clauses)
-     (get-transitive-closure! dependencies-graph)
+     (transitive-close! dependencies-graph)
+     (merge/clauses clauses)
      (clear-caches!))
    (define (post-process self terms) terms)])
 
 (register-horn-transformer (clauses-merger))
 
 
-(define dependencies-graph (make-hash))
+(define dependencies-graph (make-graph))
 (define input-constants-cache (make-hash))
 (define output-constants-cache (make-hash))
 (define matchings-cache (make-hash))
+(define synchronized-cache (make-hash))
+(define app-product-cache (make-hash))
 
 (define (clear-caches!)
-  (hash-clear! dependencies-graph)
+  (graph-clear! dependencies-graph)
   (hash-clear! input-constants-cache)
   (hash-clear! output-constants-cache)
-  (hash-clear! matchings-cache))
+  (hash-clear! matchings-cache)
+  (hash-clear! synchronized-cache)
+  (hash-clear! app-product-cache))
 
 ;; ----------------- Dependencies ----------------- ;;
 
@@ -85,8 +89,7 @@
         [_ (values #f #f)])))
 
 (define (depends?/definitions f g)
-  (and (hash-has-key? dependencies-graph f)
-       (set-member? (hash-ref dependencies-graph f) g)))
+  (connected? dependencies-graph f g))
 
 (define (independent?/definitions f g)
   (not (or (depends?/definitions f g)
@@ -103,7 +106,7 @@
     [(_ _) #f]))
 
 (define (add-dependence f g)
-  (set-add! (hash-ref! dependencies-graph f (thunk (mutable-set))) g))
+  (connect! dependencies-graph f g))
 
 (define (dfs/relation relation visited clauses)
   (define (dfs/term term)
@@ -134,40 +137,30 @@
         (unless (set-member? visited rel)
           (dfs/relation rel visited clauses))))))
 
-(define (get-transitive-closure! g)
-  (define (dfs/closure v visited)
-    (unless (set-member? visited v)
-      (set-add! visited v)
-      (for ([son (in-set (hash-ref! g v (thunk (mutable-set))))])
-        (dfs/closure son visited)
-        (set-union! (hash-ref g v) (hash-ref! g son (thunk (mutable-set)))))))
-  (let ([visited (mutable-set)])
-    (for ([v (in-hash-keys g)])
-      (dfs/closure v visited))))
-
 ;; ----------------- Determining synchronized set ----------------- ;;
 
 ; Remark: the optimal matching may be obtained by Kuhn algorithm.
 ; However, here we match recursive calls, so greedy algo works good
 ; for all practical cases.
-(define (match/lists xs ys ω)
+(define (<-> id [xs #f] [ys #f] [ω #f])
   (hash-ref!
-   matchings-cache (cons xs ys)
-   (thunk
-    (let ([ys-to-match (list->mutable-set ys)]
-          [matching (mutable-set)])
-      (and
-       (for/and ([x xs])
-         (for/or ([y ys])
-           (and (ω x y)
-                (set-add! matching (cons x y))
-                (set-remove! ys-to-match y))))
-       (for/and ([y (in-set ys-to-match)])
-         (for/or ([x (in-set xs)])
-           (and
-            (ω x y)
-            (set-add! matching (cons x y)))))
-       matching)))))
+   matchings-cache id
+   (and ω xs ys
+    (thunk
+     (let ([ys-to-match (list->mutable-set ys)]
+           [matching (mutable-set)])
+       (and
+        (for/and ([x xs])
+          (for/or ([y ys])
+            (and (ω x y)
+                 (set-add! matching (cons x y))
+                 (set-remove! ys-to-match y))))
+        (for/and ([y (in-set ys-to-match)])
+          (for/or ([x (in-set xs)])
+            (and
+             (ω x y)
+             (set-add! matching (cons x y)))))
+        matching))))))
 
 (define (rel-and-args-of application)
   (match application
@@ -211,21 +204,105 @@
         [(equal? rel f) (values interpreted linear (cons premise recursive))]
         [else           (values interpreted (cons premise linear) recursive)]))))
 
-(define (synchronized-by?/clauses f g f-args g-args)
+(define (synchronized-by?/clauses f g f-id g-id f-args g-args)
   (let*-values
       ([(f-rel f-concl-args) (horn-clause-conclusion f)]
        [(g-rel g-concl-args) (horn-clause-conclusion g)]
        [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
        [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
        [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
-    (match/lists (cons f-recursive (horn-clause-conclusion f))
-                 (cons g-recursive (horn-clause-conclusion g))
-                 ω)))
+    (<-> (list f-rel g-rel f-id g-id f-args g-args)
+         (cons (horn-clause-conclusion f) f-recursive)
+         (cons (horn-clause-conclusion g) g-recursive)
+         ω)))
 
 (define (synchronized-by?/definitions f g f-args g-args clauses)
-  (or (and (empty? f-args) (empty? g-args))
-      (and (= (length f-args) (length g-args))
-           (independent?/definitions f g)
-           (for*/and ([f-clause (hash-ref clauses f)]
-                      [g-clause (hash-ref clauses g)])
-             (synchronized-by?/clauses f-clause g-clause f-args g-args)))))
+  (hash-ref!
+   synchronized-cache (list f g f-args g-args)
+   (thunk
+    (or (and (empty? f-args) (empty? g-args))
+        (and (= (length f-args) (length g-args))
+             (independent?/definitions f g)
+             (for*/and ([(f-clause f-id) (in-sequences (hash-ref clauses f) (in-naturals))]
+                        [(g-clause g-id) (in-sequences (hash-ref clauses g) (in-naturals))])
+               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args)))))))
+
+;; ----------------- Merging ----------------- ;;
+
+(define (synchronous-product f g f-args g-args f-apps g-apps clauses)
+  (define product-app
+    (hash-ref!
+     app-product-cache (list f g f-args g-args)
+     (thunk
+      (let*-values
+          ([(f-read-deps f-args f-write-deps f-rets) (decompose-arguments f)]
+           [(g-read-deps g-args g-write-deps g-rets) (decompose-arguments g)]
+           [(h) (fresh-relation (gensym (format "~a⊕~a" f g))
+                                (append f-read-deps g-read-deps)
+                                (append f-args g-args)
+                                (append f-write-deps g-write-deps)
+                                (append f-rets g-rets))]
+           [(product-app)
+            (λ (f-app g-app)
+              (let*-values
+                  ([(f-read-deps f-args f-write-deps f-rets) (decompose-arguments f-app)]
+                   [(g-read-deps g-args g-write-deps g-rets) (decompose-arguments g-app)])
+                (apply expression `(,h ,@f-read-deps ,@g-read-deps ,@f-args ,@g-args ,@f-write-deps ,@g-write-deps ,@f-rets ,@g-rets))))]
+           [(h-defs)
+            (for*/list ([(f-clause f-id) (in-sequences (hash-ref clauses f) (in-naturals))]
+                        [(g-clause g-id) (in-sequences (hash-ref clauses g) (in-naturals))])
+              (let*-values
+                  ([(f-conclusion) (horn-clause-conclusion f-clause)]
+                   [(g-conclusion) (horn-clause-conclusion g-clause)]
+                   [(h-conclusion) (product-app f-conclusion g-conclusion)]
+                   [(f-conclusion-args) (args-of f-conclusion)]
+                   [(g-conclusion-args) (args-of g-conclusion)]
+                   [(equalities) (for/list ([f-arg f-args]
+                                            [g-arg g-args])
+                                   (@equal? (list-ref f-conclusion-args f-arg)
+                                            (list-ref g-conclusion-args g-arg)))]
+                   [(φ f-linear f-recursive) (split-premises (horn-clause-premises f-clause) f)]
+                   [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g-clause) g)]
+                   [(matching) (<-> (list f g f-id g-id f-args g-args))]
+                   [(h-recursive)
+                    (filter (negate (curry equal? h-conclusion))
+                            (map (curry apply product-app) matching))]
+                   [(h-premises) (append equalities φ ψ f-linear g-linear h-recursive)])
+                (horn-clause (list->set h-premises) h-conclusion)))])
+        (hash-set! clauses h h-defs)
+        product-app))))
+  (for/list ([f-app f-apps]
+             [g-app g-apps])
+    (product-app f-app g-app)))
+
+(define (merge/linear-premises premises clauses)
+  (define graphs (make-hash))
+  (define (for*/one lst proc)
+    (unless (empty? lst)
+      (let ([h (car lst)]
+            [t (cdr lst)])
+        (for ([e t])
+          (proc h e)))
+      (for*/one t proc)))
+
+  ; Episode 1: building graphs. For each set of synchronized arguments we
+  ; connect two applications iff they synchronized by this set. So we get the
+  ; same amount of graphs as there are synchronized sets of arguments.
+
+  ; Episode 2: for each graph calculating all its non-trivial cliques.
+
+  ; Episode 3.1: selecting best clique-partitioning of the set of calls.
+  ; For that building graph of cliques: two cliques are conected iff they
+  ; have no common vertices. Each clique has its weight meaning the
+  ; decreasing of 'entropy', or the how much information will be brought to
+  ; solver if clauses for this clique will be merged into one set of clauses.
+
+  ; Episode 3.2: finally the best partitioning is the biggest-weight subclique
+  ; in the graph of cliques :)
+  )
+
+(define (merge/clauses clauses)
+  (for ([rel (in-hash-keys clauses)])
+    (for ([clause (hash-ref clauses rel)])
+      (let-values ([(φ linear recursive) (split-premises (horn-clause-premises clause rel))])
+        (merge/linear-premises linear clauses)))))
