@@ -35,8 +35,10 @@
   (only-in "../../query/form.rkt" verify)
   (only-in "../core/bool.rkt" @! @&& ||)
   (only-in "../core/equality.rkt" @equal?)
+  (only-in "../core/safe.rkt" assert)
   (only-in "../core/term.rkt" constant constant? expression type-of @app term<?)
   (only-in "auto-constants.rkt" auto-premises term->constants/with-auto-premises)
+  (only-in "dependencies.rkt" implicit-dependencies)
   (only-in "relation.rkt" fresh-relation relation? decompose-arguments relation-suffix)
   (only-in "utils.rkt" for**/list gensym substitute/constants unzip))
 
@@ -119,7 +121,6 @@
        (when (and (relation? term)
                   (not (equal? relation term))
                   (not (depends?/definitions relation term)))
-         (printf "Definition of ~a depends on ~a\n" relation term)
          (add-dependence relation term)
          (dfs/relation term visited clauses))]
       [_ (void)]))
@@ -178,12 +179,21 @@
     rel))
 
 (define (synchronized-by?/solve f-interpreted-premises g-interpreted-premises f-conclusion-args g-conclusion-args f-args g-args)
-  (let ([premises (map @! (append (set->list f-interpreted-premises)
-                                  (set->list g-interpreted-premises)
-                                  (for/list ([f-arg f-args]
-                                             [g-arg g-args])
-                                    (@equal? (list-ref f-conclusion-args f-arg)
-                                             (list-ref g-conclusion-args g-arg)))))])
+  (let ([premises
+         (map @!
+              (append (set->list f-interpreted-premises)
+                      (set->list g-interpreted-premises)
+                      (apply append
+                             (for/list ([f-arg f-args]
+                                        [g-arg g-args])
+                               (let* ([f-arg-val (list-ref f-conclusion-args f-arg)]
+                                      [g-arg-val (list-ref g-conclusion-args g-arg)]
+                                      [f-arg-deps (implicit-dependencies f-arg-val)]
+                                      [g-arg-deps (implicit-dependencies g-arg-val)])
+                                 (cons (@equal? f-arg-val g-arg-val)
+                                       (for/list ([f-dep f-arg-deps]
+                                                  [g-dep g-arg-deps])
+                                         (@equal? f-dep g-dep))))))))])
     (λ (f-recursive-premise g-recursive-premise)
       (let* ([f-app-args (args-of f-recursive-premise)]
              [g-app-args (args-of g-recursive-premise)]
@@ -191,8 +201,9 @@
                                                [g-arg g-args])
                                       (@equal? (list-ref f-app-args f-arg)
                                                (list-ref g-app-args g-arg))))])
-        (unsat?
-         (verify (apply || (cons conclusion premises))))))))
+        (with-handlers ([exn:fail? (λ (err) #f)])
+          (unsat?
+           (verify (assert (apply || (cons conclusion premises))))))))))
 
 (define (split-premises premises f)
   (for/fold ([interpreted '()]
@@ -223,6 +234,7 @@
    (thunk
     (or (and (empty? f-args) (empty? g-args))
         (and (= (length f-args) (length g-args))
+             (not (equal? f g))
              (independent?/definitions f g)
              (for/and ([f-clause (hash-ref clauses f)]
                        [f-id (in-naturals)]
@@ -266,10 +278,18 @@
                    [(h-conclusion) (product-app f-conclusion g-conclusion)]
                    [(f-conclusion-args) (args-of f-conclusion)]
                    [(g-conclusion-args) (args-of g-conclusion)]
-                   [(equalities) (for/list ([f-arg f-arg-nums]
-                                            [g-arg g-arg-nums])
-                                   (@equal? (list-ref f-conclusion-args f-arg)
-                                            (list-ref g-conclusion-args g-arg)))]
+                   [(equalities)
+                    (apply append
+                             (for/list ([f-arg f-arg-nums]
+                                        [g-arg g-arg-nums])
+                               (let* ([f-arg-val (list-ref f-conclusion-args f-arg)]
+                                      [g-arg-val (list-ref g-conclusion-args g-arg)]
+                                      [f-arg-deps (implicit-dependencies f-arg-val)]
+                                      [g-arg-deps (implicit-dependencies g-arg-val)])
+                                 (cons (@equal? f-arg-val g-arg-val)
+                                       (for/list ([f-dep f-arg-deps]
+                                                  [g-dep g-arg-deps])
+                                         (@equal? f-dep g-dep))))))]
                    [(φ f-linear f-recursive) (split-premises (horn-clause-premises f-clause) f)]
                    [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g-clause) g)]
                    [(matching) (<-> (list f g f-id g-id f-arg-nums g-arg-nums))]
@@ -359,7 +379,7 @@
     (enumerate-cliques g
      (λ (clique)
        (let ([idx (index-of (cons s (list->set (set->list clique))))]
-             [weight (* (set-count clique) (length s))])
+             [weight (* (set-count clique) (length (third s)))])
          (when (> weight max-weight)
            (set! max-weight weight)
            (set! max-clique (set idx)))
@@ -386,21 +406,21 @@
          (hash-ref weights-of-cliques c)))
      (when (> weight max-weight)
        (set! max-weight weight)
-       (set! max-clique clique-of-cliques))))
+       (set! max-clique (set-copy clique-of-cliques)))))
 
   ; Episode 4: finally performing merging of largest possible amount of premises.
   (if max-clique
       (for/fold ([premises (list->set premises)])
                 ([idx (in-set max-clique)])
-                (let*-values
-                    ([(sync-and-clique) (vertex-of idx)]
-                     [(sync clique) (values (car sync-and-clique) (cdr sync-and-clique))]
-                     [(f-rel g-rel synchronization) (values (first sync) (second sync) (third sync))]
-                     [(f-args g-args) (unzip synchronization)]
-                     [(apps) (set-map clique vertex-of)]
-                     [(f-apps g-apps) (partition (λ (app) (equal? (rel-of app) f-rel)) apps)]
-                     [(product) (synchronous-product f-rel g-rel f-args g-args f-apps g-apps clauses)])
-                  (set-union (list->set product) (set-subtract premises (list->set apps)))))
+        (let*-values
+            ([(sync-and-clique) (vertex-of idx)]
+             [(sync clique) (values (car sync-and-clique) (cdr sync-and-clique))]
+             [(f-rel g-rel synchronization) (values (first sync) (second sync) (third sync))]
+             [(f-args g-args) (unzip synchronization)]
+             [(apps) (set-map clique vertex-of)]
+             [(f-apps g-apps) (partition (λ (app) (equal? (rel-of app) f-rel)) apps)]
+             [(product) (synchronous-product f-rel g-rel f-args g-args f-apps g-apps clauses)])
+          (set-union (list->set product) (set-subtract premises (list->set apps)))))
       (list->set premises)))
 
 (define (merge/clauses clauses)

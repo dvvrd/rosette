@@ -8,6 +8,7 @@
   (only-in "../adt/seq.rkt" lift/apply/higher-order)
   (only-in "../form/control.rkt" @cond @if)
   (only-in "../core/bool.rkt" instance-of? || && @boolean?)
+  (only-in "../core/equality.rkt" @eq? @equal?)
   (only-in "../core/function.rkt" ~>)
   (only-in "../core/lift.rkt" lift-id unsafe-merge**)
   (only-in "../core/merge.rkt" merge* unsafe-merge*)
@@ -66,8 +67,8 @@
                   u])]
               [else (assert #f (argument-error caller (~a list?) v))])]
        [_ (assert #f (argument-error caller (~a list?) v))]))
-   (define (type-eq? self u v)        (eq? u v))
-   (define (type-equal? self u v)     (equal? u v))
+   (define (type-eq? self u v)    (@eq?    (@length u) (@length v)))
+   (define (type-equal? self u v) (@equal? (@length u) (@length v)))
    (define (type-compress self force? ps) ps)
    (define (type-construct self vs)
      (cond
@@ -89,7 +90,7 @@
      (fprintf port "listof ~a" (@list-element-type self)))]
   #:methods gen:implicitly-dependent
   [(define (implicit-dependencies self constant)
-     (list (@length constant) (@car constant) (@cdr constant)))])
+     (list (@length constant) (@car constant #f) (@cdr constant #f)))])
 
 ;; ----------------- Storage of information about list constants ----------------- ;;
 

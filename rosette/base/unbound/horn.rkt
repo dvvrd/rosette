@@ -69,5 +69,7 @@
    (do-post-processing
     (filter identity
             (apply append
-                   (hash-map clauses
-                             (λ (head cs) (map clause->assertion cs))))))))
+                   `(,@(for/list ([(head cs) (in-hash clauses)]
+                                  #:when head)
+                         (map clause->assertion cs))
+                     ,(map clause->assertion (hash-ref clauses #f))))))))

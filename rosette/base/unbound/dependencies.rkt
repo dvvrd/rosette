@@ -14,6 +14,7 @@
   (only-in "call-graph.rkt" make-associations associate associated? reset-associations-cache fold/reachable))
 
 (provide gen:implicitly-dependent
+         (rename-out [get-implicit-dependencies implicit-dependencies])
          read-dependencies/original read-dependencies/current
          write-dependencies write-dependencies-states
          set-up-read-dependencies set-up-write-dependencies
@@ -27,6 +28,11 @@
 ; dependencies (cause they are essentially implicit arguments of the funciton).
 (define-generics implicitly-dependent
   [implicit-dependencies implicitly-dependent instance])
+
+(define (get-implicit-dependencies obj)
+  (if (implicitly-dependent? (type-of obj))
+      (implicit-dependencies (type-of obj) obj)
+      (list)))
 
 (define constants-to-ids (make-hash))
 (define read-dependencies-cache (make-associations))
@@ -64,11 +70,7 @@
   (reset-associations-cache read-dependencies-cache)
   (let* ([args-implicit-dependencies (list->set
                                       (apply append
-                                             (map (λ (arg)
-                                                    (if (implicitly-dependent? (type-of arg))
-                                                        (implicit-dependencies (type-of arg) arg)
-                                                        (list)))
-                                                  args)))]
+                                             (map get-implicit-dependencies args)))]
          [mutations (state->mutations mutations-state)]
          [constants (terms->constants (cons body mutations))]
          [global-constants (filter (λ (v) (global-var? v args scope args-implicit-dependencies))
