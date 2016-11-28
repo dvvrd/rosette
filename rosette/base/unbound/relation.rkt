@@ -5,10 +5,12 @@
   (only-in "../core/function.rkt" ~>)
   (only-in "../core/term.rkt"
            constant constant? expression @app
-           type-of solvable-domain solvable-range type-applicable?)
+           type-of solvable-domain solvable-range
+           type? type-applicable?)
   (only-in "dependencies.rkt" [read-dependencies/current read-dependencies] write-dependencies))
 
-(provide relation? function-application->relation function->relation decompose-arguments
+(provide relation? function-application->relation function->relation
+         decompose-arguments relation-suffix
          (rename-out [fresh-relation-constant fresh-relation]))
 
 (define relation-suffix "°")
@@ -35,8 +37,8 @@
          [result (constant (string->symbol (format "~a~a" name relation-suffix)) (argument-types->relation-type read-deps args write-deps ret))])
     (hash-set! args-decomposers result (λ (xs)
                                          (match xs
-                                           [(? type-applicable?) (decomposer `(,@(solvable-domain xs) ,(solvable-range xs)))]
-                                           [(? relation?) (decomposer `(,@(solvable-domain (type-of xs)) ,(solvable-range (type-of xs))))]
+                                           [(and (? type?) (? type-applicable?)) (decomposer (solvable-domain xs))]
+                                           [(? relation?) (decomposer (solvable-domain (type-of xs)))]
                                            [(expression (== @app) _ args ...) (decomposer args)]
                                            [(list xs ...) (decomposer xs)])))
     result))
@@ -47,7 +49,7 @@
 (define (fresh-relation f)
   (let* ([read-deps (map type-of (read-dependencies f))]
          [write-deps (map type-of (write-dependencies f))]
-         [result (fresh-relation-constant f read-deps (solvable-domain (type-of f)) write-deps (solvable-range (type-of f)))])
+         [result (fresh-relation-constant f read-deps (solvable-domain (type-of f)) write-deps (list (solvable-range (type-of f))))])
     (hash-set! relations-cache f result)
     result))
 
@@ -56,5 +58,5 @@
     (apply expression `(, @app ,rel ,@read-deps ,@args ,@write-deps ,ret))))
 
 (define (argument-types->relation-type read-dependencies domain write-dependencies range)
-  (apply ~> `(,@read-dependencies ,@domain ,@write-dependencies ,range , @boolean?)))
+  (apply ~> `(,@read-dependencies ,@domain ,@write-dependencies ,@range , @boolean?)))
 

@@ -14,6 +14,11 @@
 (define (connect! g v1 v2)
   (set-add! (hash-ref! g v1 (thunk (mutable-set))) v2))
 
+; Mutates g adding undirected edge between v1 and v2.
+(define (connect!/undirected g v1 v2)
+  (connect! g v1 v2)
+  (connect! g v2 v1))
+
 ; Returns sequence of vertices connected to v in graph g.
 (define (in-connected g v)
   (in-set (hash-ref g v (set))))
@@ -66,7 +71,7 @@
   (define (filter-unconnected set v)
     (list->mutable-set
      (for/list ([c (in-set set)]
-                #:when (connected? g v c))
+                #:when (and (connected? g v c) (not (equal? c v))))
        c)))
 
   (define (bron-kerbosch cur-clique candidates wrong)
