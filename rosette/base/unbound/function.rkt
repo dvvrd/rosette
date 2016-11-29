@@ -14,7 +14,7 @@
 
 (provide (for-syntax make-solvable-function) instantiate-high-order-solvable-function)
 
-(define-for-syntax (make-solvable-function head args type body [shared-scope-id #f])
+(define-for-syntax (make-solvable-function head args type body)
   #`(with-handlers ([exn:fail?
                      (λ (err)
                        (λ (#,@args)
@@ -53,8 +53,7 @@
                                 (cons term state)))])
                  (solvable-function->horn-clauses head-syntax head-constant
                                                   (list #,@args) arg-constants
-                                                  impl term-cache-snapshot
-                                                  #,shared-scope-id)))])))))
+                                                  impl term-cache-snapshot)))])))))
 
 (define (i-th-member-of-domain i type)
   (let ([domain (solvable-domain type)])
@@ -71,13 +70,6 @@
 (define (call-tree-root?) (equal? (stack-size) 2))
 
 (define high-order-functions (make-hash))
-(define shared-scope-cache (make-hash))
-
-(define (shared-scope id)
-  (hash-ref shared-scope-cache id (set)))
-
-(define (share-constants shared-scope-id constants-set)
-  (hash-set! shared-scope-cache shared-scope-id (set-union (shared-scope shared-scope-id) constants-set)))
 
 (define (instantiate-high-order-solvable-function id functions constructor)
   (if (empty? functions)
@@ -118,15 +110,14 @@
 
 (define (solvable-function->horn-clauses head head-constant
                                          args arg-constants
-                                         body term-cache-snapshot
-                                         shared-scope-id)
+                                         body term-cache-snapshot)
   (define-values (term state/after) (speculate/symbolized (body)))
    ; TODO: make it more effective
   (define scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
   (set-up-read-dependencies head-constant
                             term
                             (unbox arg-constants)
-                            (set-union scoped-constants (shared-scope shared-scope-id))
+                            scoped-constants
                             state/after)
   (set-up-write-dependencies head-constant state/after)
   (define (delimited-encoding)
@@ -137,11 +128,9 @@
       (set-up-read-dependencies head-constant
                                 term
                                 (unbox arg-constants)
-                                (set-union scoped-constants (shared-scope shared-scope-id))
+                                scoped-constants
                                 state/after)
       (set-up-write-dependencies head-constant state/after))
-    (when shared-scope-id
-      (share-constants shared-scope-id scoped-constants))
     (eval/horn term
                head-constant
                (unbox arg-constants)))

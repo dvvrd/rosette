@@ -13,7 +13,7 @@
   (only-in "mutations.rkt" state->mutations)
   (only-in "utils.rkt" for**/list gensym)
   (only-in "auto-constants.rkt" auto-premises register-auto-constants)
-  "dependencies.rkt" "relation.rkt" "horn.rkt" )
+  "dependencies.rkt" "relation.rkt" "horn.rkt")
 
 (provide @app
          (rename-out [eval-body/horn eval/horn])
@@ -26,7 +26,7 @@
 (define current-head (make-parameter #f))
 (define current-args (make-parameter #f))
 (define current-premises (make-parameter (set)))
-(define current-rules (make-parameter (list)))
+(define current-rules (make-parameter (make-hash)))
 (define current-mutations-clauses (make-parameter #f))
 
 (define (add-premise premise)
@@ -52,7 +52,9 @@
                                                                            (map horn-clause-conclusion clauses)
                                                                            value)))))
               (list (horn-clause (current-premises) value)))])
-    (current-rules (append (current-rules) resulting-clauses))))
+    (hash-update! (current-rules) (function->relation (current-head))
+                  (λ (rules) (append rules resulting-clauses))
+                  (list))))
 
 ;; ----------------- Symbolic term --> Horn clauses ----------------- ;;
 
@@ -73,9 +75,9 @@
     (term->horn-clauses #t t)))
 
 (define (term->rules t)
-  (parameterize ([current-rules (list)])
+  (parameterize ([current-rules (make-hash)])
     (eval/horn t)
-    (current-rules)))
+    (hash-ref (current-rules) #f '())))
 
 (define (term->horn-clauses tail-position? t)
   (match t
@@ -150,4 +152,6 @@
     ε))
 
 (define (rules->assertions clauses additional-premises)
-   (clauses->assertions (append (current-rules) clauses) additional-premises))
+  (define copy (hash-copy (current-rules)))
+  (hash-set! copy #f clauses)
+  (clauses->assertions copy additional-premises))

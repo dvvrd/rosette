@@ -31,7 +31,8 @@
   (horn-transformers (cons transformer (horn-transformers))))
 
 (define (do-pre-processing clauses)
-  (foldl pre-process clauses (horn-transformers)))
+  (for ([transformer (horn-transformers)])
+    (pre-process transformer clauses)))
 
 (define (do-post-processing clauses)
   (foldl post-process clauses (horn-transformers)))
@@ -54,14 +55,21 @@
     [else clause]))
 
 (define (enrich clauses additional-premises)
-  (for/list ([clause clauses])
-    (horn-clause (set-union additional-premises (horn-clause-premises clause))
-                 (horn-clause-conclusion clause))))
+  (for ([head (in-hash-keys clauses)])
+    (hash-update! clauses head
+                  (λ (clauses)
+                    (for/list ([clause clauses])
+                      (horn-clause (set-union additional-premises (horn-clause-premises clause))
+                                   (horn-clause-conclusion clause)))))))
 
 (define (clauses->assertions clauses additional-premises)
+  (enrich clauses additional-premises)
+  (do-pre-processing clauses)
   (share-vars
    (do-post-processing
     (filter identity
-            (map clause->assertion
-                 (do-pre-processing
-                  (enrich clauses additional-premises)))))))
+            (apply append
+                   `(,@(for/list ([(head cs) (in-hash clauses)]
+                                  #:when head)
+                         (map clause->assertion cs))
+                     ,(map clause->assertion (hash-ref clauses #f))))))))

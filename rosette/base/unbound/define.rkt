@@ -46,8 +46,7 @@
            #,(make-solvable-function #'(datum->syntax #f (gensym (syntax->datum #'head)))
                                      #'(args ...)
                                      #'type
-                                     #'(thunk body body-rest ...)
-                                     (symbol->string (syntax->datum #'head)))))))]))
+                                     #'(thunk body body-rest ...))))))]))
 
 ; Like define/unbound, but returns a lambda-expression.
 (define-syntax (lambda/unbound stx)

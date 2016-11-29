@@ -8,6 +8,7 @@
 ; Calls proc for all possible combinations of list-of-lists, returns a list
 ; of all results that those calls produced. If list-of-lists is empty then
 ; a list consisting of (proc '()) returned.
+; TODO: is this just mapping cartesian-product? Test performance!
 (define (for**/list list-of-lists proc)
   (define (for**/list-rec lists proc current result)
     (let ([h (car lists)]
@@ -54,6 +55,11 @@
     [(constant _ _) (if (hash-has-key? subst t) (hash-ref subst t t) t)]
     [(list _ ...) (map (curry substitute/constants subst) t)]
     [_ t]))
+
+; Returns two lists instead of list of pairs.
+(define (unzip lst)
+  (for/lists (l1 l2) ([pair lst])
+    (values (car pair) (cdr pair))))
 
 ; Overloads racket gensym to simplify generated values. For each
 ; base it will return symbols starting from 1, thus identifiers
