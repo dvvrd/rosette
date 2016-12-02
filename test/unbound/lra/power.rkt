@@ -63,6 +63,9 @@
                      #:guarantee (assert (> (pwr a x) (* 2 x))))
    )
 
+   (check-unsat
+    (verify/unbound #:assume (assert (and (> y x) (> x 0) (> a 0)))
+                    #:guarantee (assert (> (pwr a y) (pwr a x)))))
 ))
 
 (time (run-tests pwr-tests))

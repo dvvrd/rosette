@@ -149,11 +149,11 @@
            [ys-to-match (list->mutable-set ys)]
            [matching (mutable-set)])
        (for ([x xs])
-          (for ([y ys])
-              (when (ω x y)
-                (set-add! matching (cons x y))
-                (set-remove! xs-to-match x)
-                (set-remove! ys-to-match y))))
+         (for ([y ys])
+           (when (ω x y)
+             (set-add! matching (list x y))
+             (set-remove! xs-to-match x)
+             (set-remove! ys-to-match y))))
        (and
         (set-empty? xs-to-match)
         (set-empty? ys-to-match)
@@ -250,51 +250,50 @@
   (define key (append sorted-rels sorted-args))
 
   (define (match/cliques clauses-nums recursive-premises)
-    (printf "MATCHING CLIQUES ~a\n" clauses-nums)
     (define n (length clauses-nums))
     (define sync-graph (make-graph))
     (define cliques (make-hash))
     (define indeces (mutable-set))
 
-    (for/and ([(f rest-rels) (in-splits sorted-rels)]
-              [(f-idx rest-idxs) (in-splits sorted-idxs)]
-              [(f-id rest-clause-nums) (in-splits clauses-nums)]
-              [(f-premises rest-premises) (in-splits recursive-premises)]
-              #:when #t
-              [g rest-rels]
-              [g-idx rest-idxs]
-              [g-id rest-clause-nums]
-              [g-premises rest-premises])
-      (let*-values
-          ([(f-arg-nums g-arg-nums) (unzip (arg-nums f-idx g-idx))]
-           [(matching)
-            (if (empty? f-arg-nums)
-                (cartesian-product f-premises g-premises)
-                (<-> (list f g f-id g-id f-arg-nums g-arg-nums)))])
-        (printf "MATCHING FOR ~a ~a ~a ~a ~a ~a: ~a (~a ~a)\n" f g f-id g-id f-arg-nums g-arg-nums matching f-idx g-idx)
-        (and
-         matching
-         (for ([pair matching])
-           (let ([f-ind (index-of (car pair))]
-                 [g-ind (index-of (cdr pair))])
-             (set-add! indeces f-ind)
-             (set-add! indeces g-ind)
-             (printf "connecting ~a and ~a (by ~a)\n" (car pair) (cdr pair) (arg-nums f-idx g-idx))
-             (connect!/undirected sync-graph f-ind g-ind))))))
+    (and
+     (for/and ([(f rest-rels) (in-splits sorted-rels)]
+               [(f-idx rest-idxs) (in-splits sorted-idxs)]
+               [(f-clause-num rest-clause-nums) (in-splits clauses-nums)]
+               [(f-premises rest-premises) (in-splits recursive-premises)]
+               #:when #t
+               [g rest-rels]
+               [g-idx rest-idxs]
+               [g-clause-num rest-clause-nums]
+               [g-premises rest-premises])
+       (let*-values
+           ([(f-arg-nums g-arg-nums) (unzip (arg-nums f-idx g-idx))]
+            [(matching)
+             (if (empty? f-arg-nums)
+                 (cartesian-product f-premises g-premises)
+                 (<-> (list f g f-clause-num g-clause-num f-arg-nums g-arg-nums)))])
+         (and
+          matching
+          (for ([pair matching])
+            (let ([f-app-idx (index-of (cons (first pair) f-idx))]
+                  [g-app-idx (index-of (cons (last pair) g-idx))])
+              (set-add! indeces f-app-idx)
+              (set-add! indeces g-app-idx)
+              (connect!/undirected sync-graph f-app-idx g-app-idx))))))
 
-    (enumerate-cliques sync-graph
-     (λ (clique)
-       (when (= (set-count clique) n)
-         (let ([copied-clique (list->set (set->list clique))])
-           (for ([v (in-set copied-clique)]
-                 #:unless (hash-has-key? cliques v))
-             (hash-set! cliques v copied-clique))))))
+     (enumerate-cliques sync-graph
+      (λ (clique)
+        (when (= (set-count clique) n)
+          (let ([copied-clique (list->set (set->list clique))])
+            (for ([v (in-set copied-clique)]
+                  #:unless (hash-has-key? cliques v))
+              (hash-set! cliques v copied-clique))))))
 
-    (and (= (hash-count cliques) (set-count indeces))
-         (list->set
-          (map (λ (clique)
-                 (set-map clique vertex-of))
-               (hash-values cliques)))))
+     (= (hash-count cliques) (set-count indeces))
+
+     (list->set
+      (map (λ (clique)
+             (set-map clique (compose car vertex-of)))
+           (hash-values cliques)))))
 
   (define product-app
     (hash-ref!
@@ -361,7 +360,10 @@
                      (for/lists (l1 l2 l3) ([rel sorted-rels]
                                             [clause clauses])
                        (split-premises (horn-clause-premises clause) rel))]
-                    [(matching) (match/cliques clauses-nums recursives)])
+                    [(matching) (match/cliques clauses-nums
+                                               (map (λ (apps clause)
+                                                      (cons (horn-clause-conclusion clause) apps))
+                                                    recursives clauses))])
                  (assert matching)
                  (let* ([h-recursive
                          (filter (negate (curry equal? h-conclusion))
@@ -392,7 +394,6 @@
   (define sync-sets (make-hash))
 
   (define (synchronize f g s)
-    (printf "SYNCHRONIZING ~a and ~a by ~a\n" f g s)
     (hash-set! sync-sets (cons f g) s)
     (hash-set! sync-sets (cons g f) s)
     (connect!/undirected graph f g))
@@ -409,9 +410,10 @@
         (let*-values
             ([(f-rel f-args*) (rel-and-args-of f-app)]
              [(g-rel g-args*) (rel-and-args-of g-app)]
-             [(_) (when (term<? g-rel f-rel)
-                    (set!-values (f-app f-rel f-args* g-app g-rel g-args*)
-                                 (values g-app g-rel g-args* f-app f-rel f-args*)))]
+             [(f-app f-rel f-args* g-app g-rel g-args*)
+              (if (term<? f-rel g-rel)
+                  (values f-app f-rel f-args* g-app g-rel g-args*)
+                  (values g-app g-rel g-args* f-app f-rel f-args*))]
              [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
              [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
              [(initial-synchronizations)
@@ -497,13 +499,28 @@
       (list->set premises)))
 
 (define (merge/clauses clauses)
-  (for ([rel (in-hash-keys clauses)])
-    (define new-clauses
-      (for/list ([clause (hash-ref clauses rel)])
-        (printf "considering clause ~a for ~a\n" clause rel)
-        (let*-values
-            ([(φ linear recursive) (split-premises (horn-clause-premises clause) rel)]
-             [(merged-linear-premises) (merge/linear-premises linear clauses)])
-          (horn-clause (set-union (list->set φ) merged-linear-premises (list->set recursive))
-                       (horn-clause-conclusion clause)))))
-    (hash-set! clauses rel new-clauses)))
+  (define visited (mutable-set #f))
+  (define queue (list #f))
+  (define (enqueue rel)
+    (unless (set-member? visited rel)
+      (set-add! visited rel)
+      (set! queue (append queue (list rel)))))
+  (define (dequeue)
+    (begin0
+      (first queue)
+      (set! queue (rest queue))))
+
+  (let loop ()
+    (unless (empty? queue)
+      (define rel (dequeue))
+      (define new-clauses
+        (for/list ([clause (hash-ref clauses rel '())])
+          (let*-values
+              ([(φ linear recursive) (split-premises (horn-clause-premises clause) rel)]
+               [(merged-linear-premises) (merge/linear-premises linear clauses)])
+            (for ([premise (in-set merged-linear-premises)])
+              (enqueue (rel-of premise)))
+            (horn-clause (set-union (list->set φ) merged-linear-premises (list->set recursive))
+                         (horn-clause-conclusion clause)))))
+      (hash-set! clauses rel new-clauses)
+      (loop))))
