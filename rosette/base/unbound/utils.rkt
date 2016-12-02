@@ -23,6 +23,20 @@
       (list (proc '()))
       (reverse (for**/list-rec list-of-lists proc '() '()))))
 
+(define-struct head-tail-stream (v)
+    #:methods gen:stream
+    [(define (stream-empty? stream)
+       (empty? (head-tail-stream-v stream)))
+     (define (stream-first stream)
+       (values (first (head-tail-stream-v stream))
+               (rest (head-tail-stream-v stream))))
+     (define (stream-rest stream)
+       (head-tail-stream (rest (head-tail-stream-v stream))))])
+
+; Returns a sequence that returns (values (first xs) (rest xs)) for each element of xs.
+(define (in-splits xs)
+  (head-tail-stream xs))
+
 ; Returns a set of all symbolic constants of term t.
 (define (term->constants t)
   (match t
