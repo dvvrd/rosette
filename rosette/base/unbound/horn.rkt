@@ -4,18 +4,26 @@
   racket/generic
   (only-in "../core/bool.rkt" @=> @&& @boolean?)
   (only-in "../core/term.rkt" constant constant? expression type-of)
-  (only-in "bound-vars.rkt" share-vars))
+  (only-in "bound-vars.rkt" share-vars)
+  (only-in "utils.rkt" substitute/constants))
 
-(provide (struct-out horn-clause) clauses->assertions
+(provide (struct-out horn-clause) clauses->assertions replace/clause
          gen:horn-transformer register-horn-transformer)
 
 (struct horn-clause (premises conclusion)
   #:methods gen:custom-write
   [(define (write-proc self port mode)
-     (fprintf port
-              "[=> ~a ~a]"
-              (cons '&& (set->list (horn-clause-premises self)))
-              (horn-clause-conclusion self)))])
+     (pretty-print
+      (cond
+        [(set-empty? (horn-clause-premises self))
+         (horn-clause-conclusion self)]
+        [else
+         (expression @=>
+                     (if (= 1 (set-count (horn-clause-premises self)))
+                         (set-first (horn-clause-premises self))
+                         (apply expression @&& (set->list (horn-clause-premises self))))
+                     (horn-clause-conclusion self))])
+      port))])
 
 ;; ----------------- Processing before passing to solver ----------------- ;;
 
@@ -73,3 +81,8 @@
                                   #:when head)
                          (map clause->assertion cs))
                      ,(map clause->assertion (hash-ref clauses #f))))))))
+
+; Performs a given substitution into all terms of clause.
+(define (replace/clause subst clause)
+  (horn-clause (list->set (set-map (horn-clause-premises clause) (curry substitute/constants subst)))
+               (substitute/constants subst (horn-clause-conclusion clause))))
