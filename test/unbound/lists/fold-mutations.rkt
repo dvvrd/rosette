@@ -15,6 +15,26 @@
 
 (foldl +/typed 0 xs)
 
+(define prev 0)
+
+(define/typed (sorted/typed x y)
+  (~> integer? boolean? boolean?)
+  (begin0
+    (if (and (>= x prev) y) #t #f)
+    (set! prev x)) 
+)
+
+(define/typed (min/typed x y)
+  (~> integer? integer? integer?)
+  (min y x))
+
+(define fs (car xs))
+(define mn (foldl min/typed 0 xs))
+
+(define srt (foldl sorted/typed #t xs))
+
+(verify/unbound (assert (implies srt (= fs mn))))
+
 (define foldmut-tests
   (test-suite+
    "[unbound] Tests for lists/fold-mutations.rkt"
