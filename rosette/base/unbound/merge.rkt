@@ -299,6 +299,8 @@
                     (if g-subst
                         (substitute/constants g-subst (last pair))
                         (last pair))]
+                   [f-app (if (pair? f-app) (cdr f-app) f-app)]
+                   [g-app (if (pair? g-app) (cdr g-app) g-app)]
                    [f-app-idx (index-of (cons f-app f-idx))]
                    [g-app-idx (index-of (cons g-app g-idx))])
               (set-add! indeces f-app-idx)
@@ -373,17 +375,19 @@
                      (apply append
                       (for/list ([(f-idx rest-idxs) (in-splits sorted-idxs)]
                                  [(f-conclusion-args rest-conclusions) (in-splits conclusion-args)]
+                                 [(f-subst rest-substs) (in-splits substitutions)]
                                  #:when #t
                                  [g-idx rest-idxs]
                                  [g-conclusion-args rest-conclusions]
+                                 [g-subst rest-substs]
                                  #:when #t
                                  [pair (arg-nums f-idx g-idx)])
                         (let* ([f-arg (car pair)]
                                [g-arg (cdr pair)]
                                [f-arg-val (list-ref f-conclusion-args f-arg)]
                                [g-arg-val (list-ref g-conclusion-args g-arg)]
-                               [f-arg-deps (implicit-dependencies f-arg-val)]
-                               [g-arg-deps (implicit-dependencies g-arg-val)])
+                               [f-arg-deps (map (λ (d) (if f-subst (hash-ref f-subst d d) d)) (implicit-dependencies f-arg-val))]
+                               [g-arg-deps (map (λ (d) (if g-subst (hash-ref g-subst d d) d)) (implicit-dependencies g-arg-val))])
                           (cons (@equal? f-arg-val g-arg-val)
                                 (for/list ([f-dep f-arg-deps]
                                            [g-dep g-arg-deps])
