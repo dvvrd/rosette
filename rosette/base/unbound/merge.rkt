@@ -256,12 +256,11 @@
       [else
        (let ([clause (first clauses)])
          (if (equal? (rel-of (horn-clause-conclusion clause)) (rel-of (horn-clause-conclusion (first (rest clauses)))))
-             (let*-values ([(conclusion) (horn-clause-conclusion clause)]
-                           [(read-deps args write-deps rets) (decompose-arguments (rel-of conclusion) conclusion)]
-                           [(substitution)
-                            (for/hash ([const (in-sequences (in-list read-deps) (in-list args))])
-                              (values const (constant (gensym (~a const)) (type-of const))))]
-                           [(unique-clause) (replace/clause substitution clause)])
+             (let* ([args (args-of (horn-clause-conclusion clause))]
+                    [substitution
+                     (for/hash ([const (in-list args)])
+                       (values const (constant (gensym (~a const)) (type-of const))))]
+                    [unique-clause (replace/clause substitution clause)])
                (cons (cons unique-clause substitution) (remove-duplicate-clauses (rest clauses))))
              (cons clause (remove-duplicate-clauses (rest clauses)))))]))
 
