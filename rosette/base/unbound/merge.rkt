@@ -453,10 +453,8 @@
              [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
              [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
              [(initial-synchronizations)
-              (for*/list ([f-arg (in-range (length f-read-deps)
-                                           (+ (length f-read-deps) (length f-args)))]
-                          [g-arg (in-range (length g-read-deps)
-                                           (+ (length g-read-deps) (length g-args)))]
+              (for*/list ([f-arg (in-range (length f-args))]
+                          [g-arg (in-range (length g-args))]
                           #:when (and (equal? (list-ref f-args f-arg)
                                               (list-ref g-args g-arg))
                                       (synchronized-by?/definitions f-rel g-rel
