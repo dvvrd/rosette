@@ -14,10 +14,13 @@
    "[unbound] Tests for lra/mult.rkt"
 
    (check-sat
-    (verify/unbound (assert (= (mult x y) (mult w z)))))
+    (verify/unbound (assert (and (= 5 (mult 2 3)) (= 6 (mult 2 3))))))
 
    (check-unsat
-    (verify/unbound (assert (= (mult x y) (mult y x)))))
+    (verify/unbound (assert (= 6 (mult 2 3)))))
+
+   (check-sat
+    (verify/unbound (assert (= (mult x y) (mult w z)))))
 
    (check-unsat
     (verify/unbound (assert (= (mult x y) (mult x y)))))

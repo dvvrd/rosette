@@ -75,6 +75,12 @@
   (for/lists (l1 l2) ([pair lst])
     (values (car pair) (cdr pair))))
 
+; Returns one list containing sequential pairings of elements from lst1 and lst2.
+(define (zip lst1 lst2)
+  (for/list ([l1 lst1]
+             [l2 lst2])
+    (cons l1 l2)))
+
 ; Overloads racket gensym to simplify generated values. For each
 ; base it will return symbols starting from 1, thus identifiers
 ; will be more readable. Should be used only for convenience of debug!

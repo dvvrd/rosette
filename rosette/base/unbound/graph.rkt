@@ -61,33 +61,35 @@
   (hash-clear! g))
 
 ; Calls proc for each subclique of the graph g.
-(define (enumerate-cliques g proc)
+(define (enumerate-cliques g proc [order #f])
 
   (define (check candidates wrong)
     (for/or ([w (in-set wrong)])
-      (for/and ([c (in-set candidates)])
+      (for/and ([c (in-list candidates)])
         (connected? g w c))))
 
-  (define (filter-unconnected set v)
+  (define (filter-unconnected/list xs v)
+    (filter (λ (x) (and (connected? g v x) (not (equal? x v)))) xs))
+
+  (define (filter-unconnected/set s v)
     (list->mutable-set
-     (for/list ([c (in-set set)]
-                #:when (and (connected? g v c) (not (equal? c v))))
-       c)))
+     (for/list ([x (in-set s)]
+                #:when (and (connected? g v x) (not (equal? x v))))
+       x)))
 
   (define (bron-kerbosch cur-clique candidates wrong)
-    (let loop ()
-      (unless (or (set-empty? candidates) (check candidates wrong))
-        (let* ([v (set-first candidates)]
-               [new-candidates (filter-unconnected candidates v)]
-               [new-wrong (filter-unconnected wrong v)])
+    (let loop ([candidates candidates])
+      (unless (or (empty? candidates) (check candidates wrong))
+        (let* ([v (first candidates)]
+               [new-candidates (filter-unconnected/list candidates v)]
+               [new-wrong (filter-unconnected/set wrong v)])
           (set-add! cur-clique v)
           (cond
-            [(and (set-empty? new-candidates) (set-empty? new-wrong))
+            [(and (empty? new-candidates) (set-empty? new-wrong))
              (proc cur-clique)]
             [else (bron-kerbosch cur-clique new-candidates new-wrong)])
           (set-remove! cur-clique v)
-          (set-remove! candidates v)
           (set-add! wrong v)
-          (loop)))))
+          (loop (rest candidates))))))
 
-  (bron-kerbosch (mutable-set) (list->mutable-set (vertices g)) (mutable-set)))
+  (bron-kerbosch (mutable-set) (or order (vertices g)) (mutable-set)))

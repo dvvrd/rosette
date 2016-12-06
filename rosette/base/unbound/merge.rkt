@@ -249,6 +249,8 @@
       (arg-nums f g)))
   (define key (append sorted-rels sorted-args))
 
+  (define (maybe-cdr p) (if (pair? p) (cdr p) p))
+
   (define (remove-duplicate-clauses clauses)
     (cond
       [(empty? clauses) empty]
@@ -256,9 +258,12 @@
       [else
        (let ([clause (first clauses)])
          (if (equal? (rel-of (horn-clause-conclusion clause)) (rel-of (horn-clause-conclusion (first (rest clauses)))))
-             (let* ([args (args-of (horn-clause-conclusion clause))]
+             (let* ([constants
+                     (terms->constants
+                      (cons (horn-clause-conclusion clause)
+                            (set->list (horn-clause-premises clause))))]
                     [substitution
-                     (for/hash ([const (in-list args)])
+                     (for/hash ([const (in-set constants)])
                        (values const (constant (gensym (~a const)) (type-of const))))]
                     [unique-clause (replace/clause substitution clause)])
                (cons (cons unique-clause substitution) (remove-duplicate-clauses (rest clauses))))
@@ -266,6 +271,7 @@
 
   (define (match/cliques clauses-nums recursive-premises substs)
     (define n (length clauses-nums))
+    (define rng (range n))
     (define sync-graph (make-graph))
     (define cliques (make-hash))
     (define indeces (mutable-set))
@@ -276,12 +282,14 @@
                [(f-clause-num rest-clause-nums) (in-splits clauses-nums)]
                [(f-premises rest-premises) (in-splits recursive-premises)]
                [(f-subst rest-substs) (in-splits substs)]
+               [(f-i rest-rng) (in-splits rng)]
                #:when #t
                [g rest-rels]
                [g-idx rest-idxs]
                [g-clause-num rest-clause-nums]
                [g-premises rest-premises]
-               [g-subst rest-substs])
+               [g-subst rest-substs]
+               [g-i rest-rng])
        (let*-values
            ([(f-arg-nums g-arg-nums) (unzip (arg-nums f-idx g-idx))]
             [(matching)
@@ -299,15 +307,16 @@
                     (if g-subst
                         (substitute/constants g-subst (last pair))
                         (last pair))]
-                   [f-app (if (pair? f-app) (cdr f-app) f-app)]
-                   [g-app (if (pair? g-app) (cdr g-app) g-app)]
-                   [f-app-idx (index-of (cons f-app f-idx))]
-                   [g-app-idx (index-of (cons g-app g-idx))])
+                   [f-app (maybe-cdr f-app)]
+                   [g-app (maybe-cdr g-app)]
+                   [f-app-idx (index-of (cons f-i f-app))]
+                   [g-app-idx (index-of (cons g-i g-app))])
               (set-add! indeces f-app-idx)
               (set-add! indeces g-app-idx)
               (connect!/undirected sync-graph f-app-idx g-app-idx))))))
 
-     (enumerate-cliques sync-graph
+     (enumerate-cliques
+      sync-graph
       (λ (clique)
         (when (= (set-count clique) n)
           (let ([copied-clique (list->set (set->list clique))])
@@ -319,7 +328,7 @@
 
      (list->set
       (map (λ (clique)
-             (set-map clique (compose car vertex-of)))
+             (set-map clique vertex-of))
            (hash-values cliques)))))
 
   (define product-app
@@ -348,9 +357,7 @@
                                                      [else (term<? (rel-of app1) (rel-of app2))])))]
                    [(read-deps args write-deps rets)
                     (for/lists (l1 l2 l3 l4) ([app-or-pair sorted-apps])
-                      (let ([app (if (pair? app-or-pair)
-                                     (cdr app-or-pair)
-                                     app-or-pair)])
+                      (let ([app (maybe-cdr app-or-pair)])
                         (decompose-arguments (rel-of app) app)))])
                 (apply expression `(, @app ,h
                                            ,@(apply append read-deps)
@@ -370,7 +377,13 @@
                     [(cur-clauses) (map (λ (c) (if (pair? c) (car c) c)) cur-clauses-and-substitutions)]
                     [(substitutions) (map (λ (c) (and (pair? c) (cdr c))) cur-clauses-and-substitutions)]
                     [(conclusion-args) (map (compose args-of horn-clause-conclusion) cur-clauses)]
-                    [(h-conclusion) (product-app (map horn-clause-conclusion cur-clauses))]
+                    [(_) (displayln "conclusion...")]
+                    [(h-conclusion)
+                     (product-app
+                      (map (λ (c i)
+                             (cons i (horn-clause-conclusion c)))
+                           cur-clauses
+                           (range (length cur-clauses))))]
                     [(equalities)
                      (apply append
                       (for/list ([(f-idx rest-idxs) (in-splits sorted-idxs)]
@@ -414,7 +427,7 @@
         product-app))))
 
   (and product-app
-       (product-app apps)))
+       (product-app (zip (in-naturals) sorted-apps))))
 
 (define vertices-of-indices (make-hash))
 (define indices-of-vertices (make-hash))

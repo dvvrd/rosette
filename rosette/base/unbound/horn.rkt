@@ -13,7 +13,8 @@
 (struct horn-clause (premises conclusion)
   #:methods gen:custom-write
   [(define (write-proc self port mode)
-     (pretty-print
+     (fprintf
+      port "~a"
       (cond
         [(set-empty? (horn-clause-premises self))
          (horn-clause-conclusion self)]
@@ -22,8 +23,7 @@
                      (if (= 1 (set-count (horn-clause-premises self)))
                          (set-first (horn-clause-premises self))
                          (apply expression @&& (set->list (horn-clause-premises self))))
-                     (horn-clause-conclusion self))])
-      port))])
+                     (horn-clause-conclusion self))])))])
 
 ;; ----------------- Processing before passing to solver ----------------- ;;
 
