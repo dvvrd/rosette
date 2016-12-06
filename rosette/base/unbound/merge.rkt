@@ -41,6 +41,8 @@
   (only-in "dependencies.rkt" implicit-dependencies)
   (only-in "relation.rkt" fresh-relation relation? decompose-arguments relation-suffix))
 
+(provide synchronized-merge)
+
 (struct clauses-merger ()
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
@@ -140,6 +142,9 @@
 
 ;; ----------------- Determining synchronized set ----------------- ;;
 
+; If #f then merge will be always performed by an empty set.
+(define synchronized-merge (make-parameter #t))
+
 (define (<-> id [xs #f] [ys #f] [ω #f])
   (hash-ref!
    matchings-cache id
@@ -224,18 +229,20 @@
          ω)))
 
 (define (synchronized-by?/definitions f g f-args g-args clauses)
-  (hash-ref!
-   synchronized-cache (list f g f-args g-args)
-   (thunk
-    (and (= (length f-args) (length g-args))
-         (independent?/definitions f g)
-         (or (and (empty? f-args) (empty? g-args))
-             (for/and ([f-clause (hash-ref clauses f)]
-                       [f-id (in-naturals)]
-                       #:when #t
-                       [g-clause (hash-ref clauses g)]
-                       [g-id (in-naturals)])
-               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args)))))))
+  (and
+   (synchronized-merge)
+   (hash-ref!
+    synchronized-cache (list f g f-args g-args)
+    (thunk
+     (and (= (length f-args) (length g-args))
+          (independent?/definitions f g)
+          (or (and (empty? f-args) (empty? g-args))
+              (for/and ([f-clause (hash-ref clauses f)]
+                        [f-id (in-naturals)]
+                        #:when #t
+                        [g-clause (hash-ref clauses g)]
+                        [g-id (in-naturals)])
+                (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args))))))))
 
 ;; ----------------- Merging ----------------- ;;
 
@@ -377,7 +384,6 @@
                     [(cur-clauses) (map (λ (c) (if (pair? c) (car c) c)) cur-clauses-and-substitutions)]
                     [(substitutions) (map (λ (c) (and (pair? c) (cdr c))) cur-clauses-and-substitutions)]
                     [(conclusion-args) (map (compose args-of horn-clause-conclusion) cur-clauses)]
-                    [(_) (displayln "conclusion...")]
                     [(h-conclusion)
                      (product-app
                       (map (λ (c i)

@@ -27,4 +27,6 @@
      @caaaar @caaadr @caadar @caaddr @cadaar @cadadr @caddar @cadddr
      @cdaaar @cdaadr @cdadar @cdaddr @cddaar @cddadr @cdddar @cddddr
      ; adt/list.rkt : Additional List Functions and Synonyms
-     @first @second @third @fourth @fifth @sixth @seventh @eighth @ninth @tenth)))
+     @first @second @third @fourth @fifth @sixth @seventh @eighth @ninth @tenth
+     ; merge.rkt
+     synchronized-merge)))
