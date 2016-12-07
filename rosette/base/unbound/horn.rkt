@@ -8,7 +8,7 @@
   (only-in "utils.rkt" substitute/constants))
 
 (provide (struct-out horn-clause) clauses->assertions replace/clause
-         gen:horn-transformer register-horn-transformer)
+         dbg-level gen:horn-transformer register-horn-transformer)
 
 (struct horn-clause (premises conclusion)
   #:methods gen:custom-write
@@ -31,6 +31,7 @@
   [pre-process horn-transformer clauses]
   [post-process horn-transformer terms])
 
+(define dbg-level (make-parameter 0))
 (define horn-transformers (make-parameter '()))
 
 (define (register-horn-transformer transformer)
@@ -58,7 +59,7 @@
   (cond
     [(horn-clause? clause)
      (let ([result (horn-clause->implication clause)])
-       (when result (printf "Rule: ~a\n" clause))
+       (when (and result (positive? (dbg-level))) (printf "Rule: ~a\n" clause))
        result)]
     [else clause]))
 

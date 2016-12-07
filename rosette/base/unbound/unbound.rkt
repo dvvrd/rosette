@@ -4,7 +4,7 @@
   (for-syntax racket/syntax (only-in "../core/lift.rkt" drop@))
   racket/provide
   "../base.rkt"
-  "define.rkt" "query.rkt" "list.rkt" "merge.rkt"
+  "define.rkt" "query.rkt" "list.rkt" "merge.rkt" "horn.rkt"
   "../../solver/smt/spacer.rkt")
 
 (provide
@@ -16,6 +16,8 @@
      define/predicate lambda/predicate λ/predicate
      ; query.rkt
      verify/unbound current-horn-solver
+     ; horn.rkt
+     dbg-level
      ; spacer.rkt
      spacer spacer?
      ; list.rkt
