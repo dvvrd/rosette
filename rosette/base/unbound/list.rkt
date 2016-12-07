@@ -246,7 +246,7 @@
                                                        (@- l 1))]
                        [fresh-list (cons fresh-head fresh-tail)])
                   (when update?
-                    (assert-bound (0 @< l) 'id)
+                    ;(assert-bound (0 @< l) 'id)
                     (update-lst fresh-list))
                   (id fresh-list))]
                [(union vs)
