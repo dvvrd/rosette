@@ -36,9 +36,15 @@
 
 (define (read-generalized-solution)
   (define port (current-input-port))
+  ;(define rp (read port))
+  ;(fprintf (current-error-port) "solver told: ~a\n" rp)
+  ;(match rp
   (match (read port)
     [(== 'sat)
      (let loop ()
+       ;(define rp (read port))
+       ;(fprintf (current-error-port) "solver told: ~a\n" rp)
+       ;(match rp
        (match (read port)
          [(list (== 'objectives) _ ...) (loop)]
          [(list (== 'model) def ...) (make-hash)]

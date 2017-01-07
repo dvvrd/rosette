@@ -220,12 +220,13 @@
   (let*-values
       ([(f-rel f-concl-args) (rel-and-args-of (horn-clause-conclusion f))]
        [(g-rel g-concl-args) (rel-and-args-of (horn-clause-conclusion g))]
+       [(f g) (if (equal? f-rel g-rel) (values f (car (rename-free-variables g))) (values f g))]
        [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
        [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
        [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
     (<-> (list f-rel g-rel f-id g-id f-args g-args)
-         (cons (horn-clause-conclusion f) f-recursive)
-         (cons (horn-clause-conclusion g) g-recursive)
+         (if (empty? f-recursive) (list (horn-clause-conclusion f)) f-recursive)
+         (if (empty? g-recursive) (list (horn-clause-conclusion g)) g-recursive)
          ω)))
 
 (define (synchronized-by?/definitions f g f-args g-args clauses)
@@ -246,6 +247,17 @@
 
 ;; ----------------- Merging ----------------- ;;
 
+; Renames all symbolic constants into ones with unique id.
+(define (rename-free-variables clause)
+  (let* ([constants
+          (terms->constants
+           (cons (horn-clause-conclusion clause)
+                 (set->list (horn-clause-premises clause))))]
+         [substitution
+          (for/hash ([const (in-set constants)])
+            (values const (constant (gensym (~a const)) (type-of const))))])
+    (cons (replace/clause substitution clause) substitution)))
+
 (define (synchronous-product arg-nums apps clauses)
   (define sorted-apps (sort apps term<? #:key rel-of))
   (define sorted-rels (map rel-of sorted-apps))
@@ -264,16 +276,9 @@
       [(empty? (rest clauses)) clauses]
       [else
        (let ([clause (first clauses)])
-         (if (equal? (rel-of (horn-clause-conclusion clause)) (rel-of (horn-clause-conclusion (first (rest clauses)))))
-             (let* ([constants
-                     (terms->constants
-                      (cons (horn-clause-conclusion clause)
-                            (set->list (horn-clause-premises clause))))]
-                    [substitution
-                     (for/hash ([const (in-set constants)])
-                       (values const (constant (gensym (~a const)) (type-of const))))]
-                    [unique-clause (replace/clause substitution clause)])
-               (cons (cons unique-clause substitution) (remove-duplicate-clauses (rest clauses))))
+         (if (equal? (rel-of (horn-clause-conclusion clause))
+                     (rel-of (horn-clause-conclusion (first (rest clauses)))))
+             (cons (rename-free-variables clause) (remove-duplicate-clauses (rest clauses)))
              (cons clause (remove-duplicate-clauses (rest clauses)))))]))
 
   (define (match/cliques clauses-nums recursive-premises substs)
@@ -421,7 +426,7 @@
                                             [clause cur-clauses]
                                             [i (in-naturals)])
                                    (map (curry cons i)
-                                        (cons (horn-clause-conclusion clause) apps)))
+                                        (if (empty? apps) (list (horn-clause-conclusion clause)) apps)))
                                  substitutions)])
                  (assert matching)
                  (let* ([h-recursive

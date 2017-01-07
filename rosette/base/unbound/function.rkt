@@ -89,8 +89,6 @@
   (let* ([head-constant (free-id-table-ref applicable-constants head)]
          [read-dependencies (read-dependencies/current head-constant)]
          [constants (mutables:=symbolic!/memorize (write-dependencies-states head))])
-    (unless (null? constants)
-      (printf "Resulting constants: ~a\n" constants))
     (function-application->symbolic-constant head-constant
                                              args
                                              read-dependencies
