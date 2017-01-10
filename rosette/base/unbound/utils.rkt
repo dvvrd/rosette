@@ -86,8 +86,8 @@
 ; will be more readable. Should be used only for convenience of debug!
 ; For releases this override should be return vanilla gensym values
 ; to exclude collision probability (definition can just be commented out for that).
-(splicing-let ([gensym-cache (make-hash)])
-  (define (gensym [base 'g])
-    (let ([suffix (add1 (hash-ref gensym-cache base 0))])
-      (hash-set! gensym-cache base suffix)
-      (string->symbol (format "~a~a" base suffix)))))
+;(splicing-let ([gensym-cache (make-hash)])
+;  (define (gensym [base 'g])
+;    (let ([suffix (add1 (hash-ref gensym-cache base 0))])
+;      (hash-set! gensym-cache base suffix)
+;      (string->symbol (format "~a~a" base suffix)))))
