@@ -10,7 +10,7 @@
 (define (auto-premises constant)
   (if (hash-has-key? auto-constants constant)
       (cdr (hash-ref auto-constants constant))
-      (list)))
+      (set)))
 
 (define (register-auto-constants constants auto-premise)
   (let* ([term-bound-vars (term->constants auto-premise)]

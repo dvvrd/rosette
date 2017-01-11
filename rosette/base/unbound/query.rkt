@@ -30,7 +30,6 @@
             [premises (premises-union premises)]
             [queries (conclusions-union conclusions fail-rel)]
             [rules (rules->assertions queries premises)])
-       ;(dbg "FINAL RULES:\n~a" rules)
        (∃-solve rules fail-rel))]
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
     [(_ post) (verify/unbound #:assume #t #:guarantee post)]))

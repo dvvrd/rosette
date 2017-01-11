@@ -25,33 +25,31 @@
 
 (define current-head (make-parameter #f))
 (define current-args (make-parameter #f))
-(define current-premises (make-parameter (set)))
 (define current-rules (make-parameter (make-hash)))
 (define current-mutations-clauses (make-parameter #f))
 
-(define (add-premise premise)
-  (current-premises (set-add (current-premises) premise)))
-
-(define (add-premises premises)
-  (unless (set-empty? premises)
-    (current-premises (set-union (current-premises) premises))))
+(define (add-rules terms-and-guards)
+  (for ([term-and-guards terms-and-guards])
+    (add-rule term-and-guards)))
 
 ; Takes conclusion and constructs horn-clauses using current traversal context.
-(define (add-rule value)
-  (let* ([resulting-clauses
+(define (add-rule term-and-guards)
+  (let* ([value (car term-and-guards)]
+         [premises (cdr term-and-guards)]
+         [resulting-clauses
           (if (current-head)
               (for**/list (current-mutations-clauses)
                           (λ (clauses)
                             (let ([additional-premises (if (null? clauses)
                                                            (set)
                                                            (apply set-union (map horn-clause-premises clauses)))])
-                              (horn-clause (set-union (current-premises) additional-premises)
+                              (horn-clause (set-union premises additional-premises)
                                            (function-application->relation (current-head)
                                                                            (read-dependencies/original (current-head))
                                                                            (current-args)
                                                                            (map horn-clause-conclusion clauses)
                                                                            value)))))
-              (list (horn-clause (current-premises) value)))])
+              (list (horn-clause premises value)))])
     (hash-update! (current-rules) (function->relation (current-head))
                   (λ (rules) (append rules resulting-clauses))
                   (list))))
@@ -71,41 +69,51 @@
       (eval/horn t))))
 
 (define (eval/horn t)
-  (parameterize ([current-premises (current-premises)])
-    (term->horn-clauses #t t)))
+  (add-rules (term->horn-clauses t)))
 
 (define (term->rules t)
   (parameterize ([current-rules (make-hash)])
     (eval/horn t)
     (hash-ref (current-rules) #f '())))
 
-(define (term->horn-clauses tail-position? t)
+(define (compose-guards conds ps [not? #f])
+  (apply append
+         (map (λ (p)
+                (map (λ (cond)
+                       (cons (car p)
+                             (set-union (set (if not? (@! (car cond)) (car cond)))
+                                        (cdr cond)
+                                        (cdr p))))
+                     conds))
+              ps)))
+
+(define (term->horn-clauses t)
   (match t
-    [(expression (== @app) f args ...)
-     (let* ([args (terms->horn-clauses args)]
-            [result (expression @app f args)])
-       (when tail-position? (add-rule result))
-       result)]
     [(expression (== dependent-app) (expression (== @app) f args ...) read-deps mutations)
-     (term->horn-clauses tail-position?
-                         (function-application->symbolic-constant f (terms->horn-clauses args) read-deps mutations))]
-    [(expression (== ite) test then else) #:when tail-position?
-     (let* ([test (term->horn-clauses #f test)]
-            [then
-             (parameterize ([current-premises (set-add (current-premises) test )])
-               (term->horn-clauses tail-position? then))]
-            [else
-             (parameterize ([current-premises (set-add (current-premises) (@! test))])
-               (term->horn-clauses tail-position? else))])
-       (expression ite test then else))]
-    [(expression (== ite*) gvs) #:when tail-position?
-     (expression ite*
-                 (map (λ (gv)
-                        (match-let* ([(guarded g v) gv]
-                                     [g (term->horn-clauses #f g)])
-                          (parameterize ([current-premises (set-add (current-premises) g)])
-                            (term->horn-clauses tail-position? v))))
-                      gvs))]
+     (for**/list (terms->horn-clauses args)
+                 (λ (args)
+                   (let ([result
+                          (function-application->symbolic-constant f
+                                                                   (map car args)
+                                                                   read-deps
+                                                                   mutations)])
+                     (cons result
+                           (apply set-union
+                                  (cons (auto-premises result)
+                                        (map cdr args)))))))]
+    [(expression (== ite) test then else)
+     (let ([test (term->horn-clauses test)]
+           [then (term->horn-clauses then)]
+           [else (term->horn-clauses else)])
+       (append (compose-guards test then)
+               (compose-guards test else #t)))]
+    [(expression (== ite*) gvs)
+     (apply append
+            (map (λ (gv)
+                   (match-let* ([(guarded g v) gv]
+                                [g (term->horn-clauses g)])
+                     (compose-guards g (term->horn-clauses v))))
+                 gvs))]
     [(or (expression (== @||) (expression (== @&&) c t) (expression (== @&&) (expression (== @!) c) e))
          (expression (== @||) (expression (== @&&) c t) (expression (== @&&) e (expression (== @!) c)))
          (expression (== @||) (expression (== @&&) (expression (== @!) c) e) (expression (== @&&) c t))
@@ -114,19 +122,18 @@
          (expression (== @||) (expression (== @&&) t c) (expression (== @&&) e (expression (== @!) c)))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) c t))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) t c)))
-     (term->horn-clauses tail-position? (expression ite c t e))]
+     (term->horn-clauses (expression ite c t e))]
     [(expression op args ...)
-     (let* ([args (terms->horn-clauses args)]
-            [result (apply expression `(,op ,@args))])
-       (when tail-position? (add-rule result))
-       result)]
+     (for**/list (terms->horn-clauses args)
+                 (λ (args)
+                   (cons (apply expression `(,op ,@(map car args)))
+                         (apply set-union (map cdr args)))))]
     [(constant _ _)
-     (add-premises (auto-premises t))
-     (when tail-position? (add-rule t))
-     t]
-    [_
-     (when tail-position? (add-rule t))
-     t]))
+     (list (cons t (auto-premises t)))]
+    [_ (list (cons t (set)))]))
+
+(define (terms->horn-clauses ts)
+  (map term->horn-clauses ts))
 
 (define (eliminate-dependent-apps t)
   (match t
@@ -140,9 +147,6 @@
            (apply expression `(,op ,@new-args))))]
     [(list xs ...) (map eliminate-dependent-apps xs)]
     [_ t]))
-
-(define (terms->horn-clauses ts)
-  (map (curry term->horn-clauses #f) ts))
 
 (define (function-application->symbolic-constant f args read-deps mutations)
   (let* ([id (gensym 'ε)]
