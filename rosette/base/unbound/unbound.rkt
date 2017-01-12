@@ -31,4 +31,4 @@
      ; adt/list.rkt : Additional List Functions and Synonyms
      @first @second @third @fourth @fifth @sixth @seventh @eighth @ninth @tenth
      ; merge.rkt
-     synchronized-merge)))
+     merge-accuracy)))

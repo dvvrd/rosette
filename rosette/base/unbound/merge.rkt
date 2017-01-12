@@ -41,15 +41,16 @@
   (only-in "dependencies.rkt" implicit-dependencies)
   (only-in "relation.rkt" fresh-relation relation? decompose-arguments relation-suffix))
 
-(provide synchronized-merge)
+(provide merge-accuracy)
 
 (struct clauses-merger ()
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
-     (build-dependencies clauses)
-     (transitive-close! dependencies-graph)
-     (merge/clauses clauses)
-     (clear-caches!))
+     (when (merge-accuracy)
+       (build-dependencies clauses)
+       (transitive-close! dependencies-graph)
+       (merge/clauses clauses)
+       (clear-caches!)))
    (define (post-process self terms) terms)])
 
 (register-horn-transformer (clauses-merger))
@@ -142,8 +143,13 @@
 
 ;; ----------------- Determining synchronized set ----------------- ;;
 
-; If #f then merge will be always performed by an empty set.
-(define synchronized-merge (make-parameter #t))
+; If #f then merge will never happen.
+; If 0 then merge will be always performed by an empty set.
+; If 1 then merge will search synchronization by maximum 1 argument (recommended)
+; ...
+; If n then merge will search synchronization by n arguments. With large n
+; and large amount of arguments merge time will increase dramaticly.
+(define merge-accuracy (make-parameter 1))
 
 (define (<-> id [xs #f] [ys #f] [ω #f])
   (hash-ref!
@@ -230,20 +236,18 @@
          ω)))
 
 (define (synchronized-by?/definitions f g f-args g-args clauses)
-  (and
-   (synchronized-merge)
-   (hash-ref!
-    synchronized-cache (list f g f-args g-args)
-    (thunk
-     (and (= (length f-args) (length g-args))
-          (independent?/definitions f g)
-          (or (and (empty? f-args) (empty? g-args))
-              (for/and ([f-clause (hash-ref clauses f)]
-                        [f-id (in-naturals)]
-                        #:when #t
-                        [g-clause (hash-ref clauses g)]
-                        [g-id (in-naturals)])
-                (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args))))))))
+  (hash-ref!
+   synchronized-cache (list f g f-args g-args)
+   (thunk
+    (and (= (length f-args) (length g-args))
+         (independent?/definitions f g)
+         (or (and (empty? f-args) (empty? g-args))
+             (for/and ([f-clause (hash-ref clauses f)]
+                       [f-id (in-naturals)]
+                       #:when #t
+                       [g-clause (hash-ref clauses g)]
+                       [g-id (in-naturals)])
+               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args)))))))
 
 ;; ----------------- Merging ----------------- ;;
 
@@ -465,7 +469,7 @@
   ; Episode 1: building graph. For each set of synchronized arguments we
   ; connect two applications iff they synchronized by this set. So we get the
   ; same amount of graphs as there are synchronized sets of arguments.
-  (for* ([(f-app rest-premises) (in-splits premises)]
+  (for* ([(f-app rest-premises) (in-splits premises)] ;!!!
          [g-app rest-premises])
     (when (independent?/applications f-app g-app)
       (let ([f-ind (index-of f-app)]
@@ -481,22 +485,26 @@
              [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
              [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
              [(initial-synchronizations)
-              (for*/list ([f-arg (in-range (length f-args))]
-                          [g-arg (in-range (length g-args))]
-                          #:when (and (equal? (list-ref f-args f-arg)
-                                              (list-ref g-args g-arg))
-                                      (synchronized-by?/definitions f-rel g-rel
-                                                                    (list f-arg) (list g-arg)
-                                                                    clauses)))
-                (synchronize f-ind g-ind (list (cons f-arg g-arg)))
-                (cons f-arg g-arg))])
-          (for ([synchronization (in-combinations initial-synchronizations)]
-                #:when (and (>= (length synchronization) 2)
-                            (let-values ([(f-args g-args) (unzip synchronization)])
-                              (synchronized-by?/definitions f-rel g-rel
-                                                            f-args g-args
-                                                            clauses))))
-            (synchronize f-ind g-ind synchronization))))))
+              (if (and (merge-accuracy) (>= (merge-accuracy) 1))
+                (for*/list ([f-arg (in-range (length f-args))]
+                            [g-arg (in-range (length g-args))]
+                            #:when (and (equal? (list-ref f-args f-arg)
+                                                (list-ref g-args g-arg))
+                                        (synchronized-by?/definitions f-rel g-rel
+                                                                      (list f-arg) (list g-arg)
+                                                                      clauses)))
+                  (synchronize f-ind g-ind (list (cons f-arg g-arg)))
+                  (cons f-arg g-arg))
+                (list))])
+          (when (and (merge-accuracy) (>= (merge-accuracy) 2))
+            (for* ([len (range 2 (min (length initial-synchronizations) (add1 (merge-accuracy))))]
+                   [synchronization (in-combinations initial-synchronizations len)]
+                  #:when (and (>= (length synchronization) 2)
+                              (let-values ([(f-args g-args) (unzip synchronization)])
+                                (synchronized-by?/definitions f-rel g-rel
+                                                              f-args g-args
+                                                              clauses))))
+              (synchronize f-ind g-ind synchronization)))))))
 
   ; Episode 2: for each graph enumerating all its maximal by inclusion sub-cliques.
   (define cliques-graph (make-graph))
