@@ -5,7 +5,7 @@
   (only-in "../core/function.rkt" ~>)
   (only-in "../core/term.rkt"
            constant constant? expression @app
-           type-of solvable-domain solvable-range
+           type-of term-type solvable-domain solvable-range
            type? type-applicable?)
   (only-in "dependencies.rkt" [read-dependencies/current read-dependencies] write-dependencies))
 
@@ -15,12 +15,14 @@
 
 (define relation-suffix "°")
 (define relations-cache (make-hash))
+(define relation-symbols (mutable-seteq))
 (define args-decomposers (make-hash))
 
 (define (relation? f)
-  (and (constant? f)
-       (string-suffix? (~a f) relation-suffix)
-       (equal? (solvable-range (type-of f)) @boolean?)))
+  (set-member? relation-symbols f))
+;  (and (constant? f)
+;       (string-suffix? (constant-name f) relation-suffix)
+;       (equal? (solvable-range (term-type f)) @boolean?)))
 
 (define (function->relation f)
   (hash-ref relations-cache f #f))
@@ -38,9 +40,10 @@
     (hash-set! args-decomposers result (λ (xs)
                                          (match xs
                                            [(and (? type?) (? type-applicable?)) (decomposer (solvable-domain xs))]
-                                           [(? relation?) (decomposer (solvable-domain (type-of xs)))]
+                                           [(? relation?) (decomposer (solvable-domain (term-type xs)))]
                                            [(expression (== @app) _ args ...) (decomposer args)]
                                            [(list xs ...) (decomposer xs)])))
+    (set-add! relation-symbols result)
     result))
 
 (define (decompose-arguments f xs)
@@ -49,7 +52,7 @@
 (define (fresh-relation f)
   (let* ([read-deps (map type-of (read-dependencies f))]
          [write-deps (map type-of (write-dependencies f))]
-         [result (fresh-relation-constant f read-deps (solvable-domain (type-of f)) write-deps (list (solvable-range (type-of f))))])
+         [result (fresh-relation-constant f read-deps (solvable-domain (term-type f)) write-deps (list (solvable-range (term-type f))))])
     (hash-set! relations-cache f result)
     result))
 
