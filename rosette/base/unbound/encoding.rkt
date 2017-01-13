@@ -18,7 +18,8 @@
 (provide @app
          (rename-out [eval-body/horn eval/horn])
          function-application->symbolic-constant term->rules
-         rules->assertions bound-var? relation?)
+         rules->assertions bound-var? relation?
+         ite-compactification)
 
 
 ;; ----------------- Caches and parameters ----------------- ;;
@@ -69,7 +70,7 @@
       (eval/horn t))))
 
 (define (eval/horn t)
-  (add-rules (term->horn-clauses t)))
+  (add-rules (term->horn-clauses #t t)))
 
 (define (term->rules t)
   (parameterize ([current-rules (make-hash)])
@@ -87,7 +88,9 @@
                      conds))
               ps)))
 
-(define (term->horn-clauses t)
+(define ite-compactification (make-parameter #f))
+
+(define (term->horn-clauses tail-position? t)
   (match t
     [(expression (== dependent-app) (expression (== @app) f args ...) read-deps mutations)
      (for**/list (terms->horn-clauses args)
@@ -102,17 +105,19 @@
                                   (cons (auto-premises result)
                                         (map cdr args)))))))]
     [(expression (== ite) test then else)
-     (let ([test (term->horn-clauses test)]
-           [then (term->horn-clauses then)]
-           [else (term->horn-clauses else)])
+     #:when (or tail-position? (not (ite-compactification)))
+     (let ([test (term->horn-clauses #f test)]
+           [then (term->horn-clauses tail-position? then)]
+           [else (term->horn-clauses tail-position? else)])
        (append (compose-guards test then)
                (compose-guards test else #t)))]
     [(expression (== ite*) gvs)
+     #:when (or tail-position? (not (ite-compactification)))
      (apply append
             (map (λ (gv)
                    (match-let* ([(guarded g v) gv]
-                                [g (term->horn-clauses g)])
-                     (compose-guards g (term->horn-clauses v))))
+                                [g (term->horn-clauses #f g)])
+                     (compose-guards g (term->horn-clauses tail-position? v))))
                  gvs))]
     [(or (expression (== @||) (expression (== @&&) c t) (expression (== @&&) (expression (== @!) c) e))
          (expression (== @||) (expression (== @&&) c t) (expression (== @&&) e (expression (== @!) c)))
@@ -122,7 +127,7 @@
          (expression (== @||) (expression (== @&&) t c) (expression (== @&&) e (expression (== @!) c)))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) c t))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) t c)))
-     (term->horn-clauses (expression ite c t e))]
+     (term->horn-clauses tail-position? (expression ite c t e))]
     [(expression op args ...)
      (for**/list (terms->horn-clauses args)
                  (λ (args)
@@ -133,7 +138,7 @@
     [_ (list (cons t (set)))]))
 
 (define (terms->horn-clauses ts)
-  (map term->horn-clauses ts))
+  (map (curry term->horn-clauses #f) ts))
 
 (define (eliminate-dependent-apps t)
   (match t

@@ -4,7 +4,7 @@
   (for-syntax racket/syntax (only-in "../core/lift.rkt" drop@))
   racket/provide
   "../base.rkt"
-  "define.rkt" "query.rkt" "list.rkt" "merge.rkt" "horn.rkt"
+  "define.rkt" "query.rkt" "list.rkt" "merge.rkt" "horn.rkt" "encoding.rkt"
   "../../solver/smt/spacer.rkt")
 
 (provide
@@ -31,4 +31,6 @@
      ; adt/list.rkt : Additional List Functions and Synonyms
      @first @second @third @fourth @fifth @sixth @seventh @eighth @ninth @tenth
      ; merge.rkt
-     merge-accuracy)))
+     merge-accuracy
+     ; encoding.rkt
+     ite-compactification)))
