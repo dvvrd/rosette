@@ -47,7 +47,6 @@
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
      (when (merge-accuracy)
-       (build-dependencies clauses)
        (transitive-close! dependencies-graph)
        (merge/clauses clauses)
        (clear-caches!)))
@@ -70,76 +69,6 @@
   (hash-clear! matchings-cache)
   (hash-clear! synchronized-cache)
   (hash-clear! app-product-cache))
-
-;; ----------------- Dependencies ----------------- ;;
-
-(define (arguments->input-output-constants f-app)
-  (if (hash-has-key? input-constants-cache f-app)
-      (values (hash-ref input-constants-cache f-app)
-              (hash-ref output-constants-cache f-app))
-      (match f-app
-        [(expression (== @app) f f-args ...)
-         (let*-values
-             ([(input-terms output-constants)
-               (splitf-at-right f-args
-                                (λ (arg) (and (constant? arg)
-                                              (set-member? (auto-premises arg) f-app))))]
-              [(output-constants) (list->set output-constants)]
-              [(input-constants)
-               (apply set-union (cons (set)
-                                      (map term->constants/with-auto-premises input-terms)))])
-           (hash-set! input-constants-cache f-app input-constants)
-           (hash-set! output-constants-cache f-app output-constants)
-           (values  input-constants output-constants))]
-        [_ (values #f #f)])))
-
-(define (depends?/definitions f g)
-  (connected? dependencies-graph f g))
-
-(define (independent?/definitions f g)
-  (not (or (depends?/definitions f g)
-           (depends?/definitions g f))))
-
-(define (independent?/applications f-app g-app)
-  (match* (f-app g-app)
-    [((expression (== @app) f f-args ...) (expression (== @app) g g-args ...))
-     (and (independent?/definitions f g)
-          (let-values ([(f-input f-output) (arguments->input-output-constants f-app)]
-                       [(g-input g-output) (arguments->input-output-constants g-app)])
-            (and (set-empty? (set-intersect f-input g-output))
-                 (set-empty? (set-intersect g-input f-output)))))]
-    [(_ _) #f]))
-
-(define (add-dependence f g)
-  (connect! dependencies-graph f g))
-
-(define (dfs/relation relation visited clauses)
-  (define (dfs/term term)
-    (match term
-      [(expression _ args ...)
-       (for ([arg args])
-         (dfs/term arg))]
-      [(constant _ _)
-       (when (and (relation? term)
-                  (not (equal? relation term))
-                  (not (depends?/definitions relation term)))
-         (add-dependence relation term)
-         (dfs/relation term visited clauses))]
-      [_ (void)]))
-
-  (unless (set-member? visited relation)
-    (set-add! visited relation)
-    (for ([clause (hash-ref clauses relation '())])
-      (for ([premise (in-set (horn-clause-premises clause))])
-        (dfs/term premise)))))
-
-; Builds graph of dependencies between relations.
-(define (build-dependencies clauses)
-  (let ([visited (mutable-set)])
-    (for ([rel (in-hash-keys clauses)])
-      (when rel
-        (unless (set-member? visited rel)
-          (dfs/relation rel visited clauses))))))
 
 ;; ----------------- Determining synchronized set ----------------- ;;
 
@@ -226,7 +155,7 @@
   (let*-values
       ([(f-rel f-concl-args) (rel-and-args-of (horn-clause-conclusion f))]
        [(g-rel g-concl-args) (rel-and-args-of (horn-clause-conclusion g))]
-       [(f g) (if (equal? f-rel g-rel) (values f (car (rename-free-variables g))) (values f g))]
+       ;[(f g) (if (equal? f-rel g-rel) (values f (car (rename-free-variables g))) (values f g))]
        [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
        [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
        [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
@@ -240,14 +169,18 @@
    synchronized-cache (list f g f-args g-args)
    (thunk
     (and (= (length f-args) (length g-args))
-         (independent?/definitions f g)
          (or (and (empty? f-args) (empty? g-args))
-             (for/and ([f-clause (hash-ref clauses f)]
+             (let ([f-clauses (hash-ref clauses f)]
+                   [g-clauses
+                    (if (equal? f g)
+                        (map (compose car rename-free-variables) (hash-ref clauses g))
+                        (hash-ref clauses g))])
+             (for/and ([f-clause f-clauses]
                        [f-id (in-naturals)]
                        #:when #t
-                       [g-clause (hash-ref clauses g)]
+                       [g-clause g-clauses]
                        [g-id (in-naturals)])
-               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args)))))))
+               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args))))))))
 
 ;; ----------------- Merging ----------------- ;;
 
@@ -471,21 +404,20 @@
   ; same amount of graphs as there are synchronized sets of arguments.
   (for* ([(f-app rest-premises) (in-splits premises)] ;!!!
          [g-app rest-premises])
-    (when (independent?/applications f-app g-app)
-      (let ([f-ind (index-of f-app)]
-            [g-ind (index-of g-app)])
-        (synchronize f-ind g-ind '())
-        (let*-values
-            ([(f-rel f-args*) (rel-and-args-of f-app)]
-             [(g-rel g-args*) (rel-and-args-of g-app)]
-             [(f-app f-rel f-args* g-app g-rel g-args*)
-              (if (term<? f-rel g-rel)
-                  (values f-app f-rel f-args* g-app g-rel g-args*)
-                  (values g-app g-rel g-args* f-app f-rel f-args*))]
-             [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
-             [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
-             [(initial-synchronizations)
-              (if (and (merge-accuracy) (>= (merge-accuracy) 1))
+    (let ([f-ind (index-of f-app)]
+          [g-ind (index-of g-app)])
+      (synchronize f-ind g-ind '())
+      (let*-values
+          ([(f-rel f-args*) (rel-and-args-of f-app)]
+           [(g-rel g-args*) (rel-and-args-of g-app)]
+           [(f-app f-rel f-args* g-app g-rel g-args*)
+            (if (term<? f-rel g-rel)
+                (values f-app f-rel f-args* g-app g-rel g-args*)
+                (values g-app g-rel g-args* f-app f-rel f-args*))]
+           [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
+           [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
+           [(initial-synchronizations)
+            (if (and (merge-accuracy) (>= (merge-accuracy) 1))
                 (for*/list ([f-arg (in-range (length f-args))]
                             [g-arg (in-range (length g-args))]
                             #:when (and (equal? (list-ref f-args f-arg)
@@ -496,15 +428,15 @@
                   (synchronize f-ind g-ind (list (cons f-arg g-arg)))
                   (cons f-arg g-arg))
                 (list))])
-          (when (and (merge-accuracy) (>= (merge-accuracy) 2))
-            (for* ([len (range 2 (min (length initial-synchronizations) (add1 (merge-accuracy))))]
-                   [synchronization (in-combinations initial-synchronizations len)]
-                  #:when (and (>= (length synchronization) 2)
-                              (let-values ([(f-args g-args) (unzip synchronization)])
-                                (synchronized-by?/definitions f-rel g-rel
-                                                              f-args g-args
-                                                              clauses))))
-              (synchronize f-ind g-ind synchronization)))))))
+        (when (and (merge-accuracy) (>= (merge-accuracy) 2))
+          (for* ([len (range 2 (min (length initial-synchronizations) (add1 (merge-accuracy))))]
+                 [synchronization (in-combinations initial-synchronizations len)]
+                 #:when (and (>= (length synchronization) 2)
+                             (let-values ([(f-args g-args) (unzip synchronization)])
+                               (synchronized-by?/definitions f-rel g-rel
+                                                             f-args g-args
+                                                             clauses))))
+            (synchronize f-ind g-ind synchronization))))))
 
   ; Episode 2: for each graph enumerating all its maximal by inclusion sub-cliques.
   (define cliques-graph (make-graph))

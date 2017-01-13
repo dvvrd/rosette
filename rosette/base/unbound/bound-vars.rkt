@@ -11,7 +11,7 @@
 
 (require
   racket/syntax
-  (only-in "../core/term.rkt" constant constant? expression type-of)
+  (only-in "../core/term.rkt" constant constant? expression term-type)
   (only-in "relation.rkt" relation?)
   (only-in "utils.rkt" term->constants))
 
@@ -52,10 +52,10 @@
            (append common-vars insufficient-vars))]))
 
 (define (common-vars-substitution bound-vars)
-  (let* ([grouped-vars (group-by type-of (set->list bound-vars))]
+  (let* ([grouped-vars (group-by term-type (set->list bound-vars))]
          [grouped-vars (for/hash ([group grouped-vars]
                                   #:when (not (empty? group)))
-                         (values (type-of (car group)) group))])
+                         (values (term-type (car group)) group))])
     ; First filling in insufficient bound vars...
     (for ([type (in-hash-keys grouped-vars)])
       (let* ([existing (hash-ref (common-bound-vars) type (list))]
