@@ -7,7 +7,8 @@
   (only-in "../core/bool.rkt" ! || @boolean? @&& @=> with-asserts-only)
   (only-in "../core/term.rkt" term-cache constant expression @app)
   (only-in "../../query/form.rkt" solve current-solver)
-  (only-in "../../solver/smt/spacer.rkt" spacer))
+  (only-in "../../solver/smt/spacer.rkt" spacer)
+  (only-in "relation.rkt" fresh-relation))
 
 (provide solve/unbound verify/unbound current-horn-solver)
 
@@ -24,7 +25,7 @@
 (define-syntax verify/unbound
   (syntax-rules ()
     [(_ #:assume pre #:guarantee post)
-     (let* ([fail-rel (constant 'fail° @boolean?)]
+     (let* ([fail-rel (fresh-relation 'fail '() '() '() '())]
             [premises (eval/asserts (thunk pre))]
             [conclusions (eval/asserts (thunk post))]
             [premises (premises-union premises)]

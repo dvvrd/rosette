@@ -36,7 +36,8 @@
                                      [(read-deps-part args-part) (split-at read-deps+args read-deps#)]
                                      [(write-deps-part ret-part) (split-at write-deps+ret write-deps#)])
                          (values read-deps-part args-part write-deps-part ret-part)))]
-         [result (constant (string->symbol (format "~a~a" name relation-suffix)) (argument-types->relation-type read-deps args write-deps ret))])
+         [result (constant (string->symbol (format "~a~a" name relation-suffix))
+                           (argument-types->relation-type read-deps args write-deps ret))])
     (hash-set! args-decomposers result (λ (xs)
                                          (match xs
                                            [(and (? type?) (? type-applicable?)) (decomposer (solvable-domain xs))]
@@ -61,5 +62,9 @@
     (apply expression `(, @app ,rel ,@read-deps ,@args ,@write-deps ,ret))))
 
 (define (argument-types->relation-type read-dependencies domain write-dependencies range)
-  (apply ~> `(,@read-dependencies ,@domain ,@write-dependencies ,@range , @boolean?)))
-
+  (if (and (empty? read-dependencies)
+           (empty? domain)
+           (empty? write-dependencies)
+           (empty? range))
+      @boolean?
+      (apply ~> `(,@read-dependencies ,@domain ,@write-dependencies ,@range , @boolean?))))
