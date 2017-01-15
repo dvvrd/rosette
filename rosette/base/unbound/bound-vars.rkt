@@ -39,7 +39,7 @@
        (cond [(equal? args new-args) t]
              [else (apply expression `(,op ,@new-args))]))]
     [(? relation?) t]
-    [(constant _ _) (hash-ref subst t t)]
+    [(constant _ _) (hash-ref subst t (thunk t))]
     [(list _ ...) (map (curry substitute/constants subst) t)]
     [_ t]))
 

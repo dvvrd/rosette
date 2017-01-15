@@ -19,7 +19,7 @@
   (only-in "dependencies.rkt" gen:implicitly-dependent)
   (only-in "horn.rkt" gen:horn-transformer register-horn-transformer)
   (only-in "lemmas.rkt" associative?)
-  (only-in "relation.rkt" relation?))
+  (only-in "relation.rkt" relation? fresh-relation))
 
 (provide (except-out (filtered-out with@ (all-defined-out)) @list? @list)
          (rename-out [list/unbound? @list?] [list @list] [null @null]))
@@ -406,13 +406,12 @@
                                         (if (@list? type)
                                             @integer?
                                             type))
-                                      old-domain)]
-                     [range (solvable-range type)])
+                                      old-domain)])
                 (cond
                   [(equal? new-domain old-domain) rel]
                   [else
-                   (constant (string->symbol (format "w/list:~a" rel))
-                             (apply ~> `(,@new-domain ,range)))])))))
+                   (fresh-relation (string->symbol (format "w/list:~a" rel))
+                                   '() new-domain '() '())])))))
 
 
 ;; ----------------- Pair and List Accessor Shorthands ----------------- ;;
