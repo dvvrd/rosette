@@ -29,8 +29,8 @@
             [premises (eval/asserts (thunk pre))]
             [conclusions (eval/asserts (thunk post))]
             [premises (premises-union premises)]
-            [queries (conclusions-union conclusions fail-rel)]
-            [rules (rules->assertions queries premises)])
+            [queries (conclusions-union conclusions fail-rel premises)]
+            [rules (rules->assertions queries)])
        (∃-solve rules fail-rel))]
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
     [(_ post) (verify/unbound #:assume #t #:guarantee post)]))
@@ -41,11 +41,13 @@
          [conclusions (map horn-clause-conclusion clauses)])
     (set-union premises (list->set conclusions))))
 
-(define (conclusions-union conclusions query)
+(define (conclusions-union conclusions query additional-premises)
   (let ([conclusions-clauses (apply append (map term->rules conclusions))])
     (map (λ (conclusion)
            (horn-clause
-            (set-add (horn-clause-premises conclusion) (! (horn-clause-conclusion conclusion)))
+            (set-union
+             (set-add (horn-clause-premises conclusion) (! (horn-clause-conclusion conclusion)))
+             additional-premises)
             query))
          conclusions-clauses)))
 

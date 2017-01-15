@@ -3,7 +3,7 @@
 (require
   racket/generic
   (only-in "../core/bool.rkt" @=> @&& @boolean?)
-  (only-in "../core/term.rkt" constant constant? expression type-of)
+  (only-in "../core/term.rkt" constant constant? expression type-of term<?)
   (only-in "bound-vars.rkt" share-vars)
   (only-in "utils.rkt" substitute/constants))
 
@@ -63,16 +63,7 @@
        result)]
     [else clause]))
 
-(define (enrich clauses additional-premises)
-  (for ([head (in-hash-keys clauses)])
-    (hash-update! clauses head
-                  (λ (clauses)
-                    (for/list ([clause clauses])
-                      (horn-clause (set-union additional-premises (horn-clause-premises clause))
-                                   (horn-clause-conclusion clause)))))))
-
-(define (clauses->assertions clauses additional-premises)
-  (enrich clauses additional-premises)
+(define (clauses->assertions clauses)
   (do-pre-processing clauses)
   (share-vars
    (do-post-processing

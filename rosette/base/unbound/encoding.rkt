@@ -160,7 +160,7 @@
     (register-auto-constants (cons ε mutations) (eliminate-dependent-apps auto-premise))
     ε))
 
-(define (rules->assertions clauses additional-premises)
+(define (rules->assertions clauses)
   (define copy (hash-copy (current-rules)))
   (hash-set! copy #f clauses)
-  (clauses->assertions copy additional-premises))
+  (clauses->assertions copy))
