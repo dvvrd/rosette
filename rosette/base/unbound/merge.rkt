@@ -365,14 +365,16 @@
                                    (map (curry cons i)
                                         (if (empty? apps) (list (horn-clause-conclusion clause)) apps)))
                                  substitutions)])
-                 (assert matching)
-                 (let* ([h-recursive
-                         (filter (negate (curry equal? h-conclusion))
-                                 (set-map matching product-app))]
-                        [h-premises (append equalities (apply append φs) (apply append linears) h-recursive)])
-                   (horn-clause (list->set h-premises) h-conclusion)))))])
-        (hash-set! clauses h h-defs)
-        product-app))))
+                 (and matching
+                      (let* ([h-recursive
+                              (filter (negate (curry equal? h-conclusion))
+                                      (set-map matching product-app))]
+                             [h-premises (append equalities (apply append φs) (apply append linears) h-recursive)])
+                        (horn-clause (list->set h-premises) h-conclusion))))))]
+           [(h-defs) (filter identity h-defs)])
+        (and (not (empty? h-defs))
+             (hash-set! clauses h h-defs)
+             product-app)))))
 
   (and product-app
        (product-app (zip (in-naturals) sorted-apps))))
