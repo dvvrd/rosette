@@ -3,6 +3,7 @@
 (require
   syntax/id-table
   (for-syntax racket syntax/parse)
+  (only-in "../core/bool.rkt" with-asserts)
   (only-in "../core/term.rkt"
            constant constant? expression type-of
            solvable-domain solvable-range
@@ -62,8 +63,12 @@
         (error 'define "Too many arguments!"))))
 
 (define-syntax-rule (speculate/symbolized body)
-  (let-values ([(pair _) (speculate* body)])
-    (values (car pair) (cdr pair))))
+  (let-values
+      ([(pair assertions)
+        (with-asserts
+            (let-values ([(pair _) (speculate* body)])
+              pair))])
+    (values (car pair) (cdr pair) assertions)))
 
 (define (already-speculated? id) (and (dict-has-key? applicable-constants id) (not (called? id))))
 (define (speculating-currently? id) (called? id))
@@ -109,7 +114,7 @@
 (define (solvable-function->horn-clauses head head-constant
                                          args arg-constants
                                          body term-cache-snapshot)
-  (define-values (term state/after) (speculate/symbolized (body)))
+  (define-values (term state/after assertions) (speculate/symbolized (body)))
    ; TODO: make it more effective
   (define scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
   (set-up-read-dependencies head-constant
@@ -121,7 +126,7 @@
   (define (delimited-encoding)
     (when (recursive? head)
       ; For recusive functions we need second execution, because we know set of write-dependencies only now.
-      (set!-values (term state/after) (speculate/symbolized (body)))
+      (set!-values (term state/after assertions) (speculate/symbolized (body)))
       (set! scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
       (set-up-read-dependencies head-constant
                                 term
@@ -131,7 +136,8 @@
       (set-up-write-dependencies head-constant state/after))
     (eval/horn term
                head-constant
-               (unbox arg-constants)))
+               (unbox arg-constants)
+               assertions))
   (cond [(recursive? head)
          (delimited-encodings (cons delimited-encoding (delimited-encodings)))
          (cond

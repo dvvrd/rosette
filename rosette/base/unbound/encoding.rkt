@@ -57,7 +57,7 @@
 
 ;; ----------------- Symbolic term --> Horn clauses ----------------- ;;
 
-(define (eval-body/horn t head args)
+(define (eval-body/horn t head args assertions)
   (parameterize ([current-head head]
                  [current-args args])
     (define mutations-clauses
@@ -67,7 +67,9 @@
           (term->rules m))))
 
     (parameterize ([current-mutations-clauses mutations-clauses])
-      (eval/horn t))))
+      (add-rules
+       (compose-guards (list (cons #t (list->set assertions)))
+                       (term->horn-clauses #t t))))))
 
 (define (eval/horn t)
   (add-rules (term->horn-clauses #t t)))
@@ -82,9 +84,10 @@
          (map (λ (p)
                 (map (λ (cond)
                        (cons (car p)
-                             (set-union (set (if not? (@! (car cond)) (car cond)))
-                                        (cdr cond)
-                                        (cdr p))))
+                             (let ([guard (if not? (@! (car cond)) (car cond))])
+                               (set-union (if (equal? guard #t) (set) (set guard))
+                                          (cdr cond)
+                                          (cdr p)))))
                      conds))
               ps)))
 

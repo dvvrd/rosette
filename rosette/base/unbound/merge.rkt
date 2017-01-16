@@ -155,7 +155,6 @@
   (let*-values
       ([(f-rel f-concl-args) (rel-and-args-of (horn-clause-conclusion f))]
        [(g-rel g-concl-args) (rel-and-args-of (horn-clause-conclusion g))]
-       ;[(f g) (if (equal? f-rel g-rel) (values f (car (rename-free-variables g))) (values f g))]
        [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
        [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
        [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
@@ -404,7 +403,7 @@
   ; Episode 1: building graph. For each set of synchronized arguments we
   ; connect two applications iff they synchronized by this set. So we get the
   ; same amount of graphs as there are synchronized sets of arguments.
-  (for* ([(f-app rest-premises) (in-splits premises)] ;!!!
+  (for* ([(f-app rest-premises) (in-splits premises)]
          [g-app rest-premises])
     (let ([f-ind (index-of f-app)]
           [g-ind (index-of g-app)])
@@ -425,10 +424,13 @@
                             #:when (and (equal? (list-ref f-args f-arg)
                                                 (list-ref g-args g-arg))
                                         (synchronized-by?/definitions f-rel g-rel
-                                                                      (list f-arg) (list g-arg)
+                                                                      (list (+ f-arg (length f-read-deps)))
+                                                                      (list (+ g-arg (length g-read-deps)))
                                                                       clauses)))
-                  (synchronize f-ind g-ind (list (cons f-arg g-arg)))
-                  (cons f-arg g-arg))
+                  (synchronize f-ind g-ind (list (cons (+ f-arg (length f-read-deps))
+                                                       (+ g-arg (length g-read-deps)))))
+                  (cons (+ f-arg (length f-read-deps))
+                        (+ g-arg (length g-read-deps))))
                 (list))])
         (when (and (merge-accuracy) (>= (merge-accuracy) 2))
           (for* ([len (range 2 (min (length initial-synchronizations) (add1 (merge-accuracy))))]

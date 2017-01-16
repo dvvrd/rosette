@@ -3,7 +3,7 @@
 (require
   (for-syntax racket/syntax (only-in "../core/lift.rkt" with@))
   racket/generic racket/provide racket/syntax
-  "../core/term.rkt" "define.rkt"
+  "../core/term.rkt" "define.rkt" "horn.rkt"
   (prefix-in bound/ "../adt/list.rkt")
   (only-in "../adt/seq.rkt" lift/apply/higher-order)
   (only-in "../form/control.rkt" @cond @if)
@@ -15,9 +15,8 @@
   (only-in "../core/real.rkt" @integer? @>= @= @< @+ @-)
   (only-in "../core/safe.rkt" assert assert-bound argument-error arguments-error assert-arity-includes assert-some)
   (only-in "../core/union.rkt" union in-union-guards union-guards union-filter union-contents)
-  (only-in "auto-constants.rkt" register-auto-constant)
+  (only-in "auto-constants.rkt" register-auto-constant auto-premises)
   (only-in "dependencies.rkt" gen:implicitly-dependent)
-  (only-in "horn.rkt" gen:horn-transformer register-horn-transformer)
   (only-in "lemmas.rkt" associative?)
   (only-in "relation.rkt" relation? fresh-relation))
 
@@ -374,28 +373,47 @@
 (struct symbolic-lists-eliminator ()
   #:methods gen:horn-transformer
   [(define (pre-process self clauses)
-     (void))
-   (define (post-process self terms)
      (parameterize ([current-relations-subst (make-hash)])
-       (eliminate* terms)))])
+       (eliminate* clauses)))
+   (define (post-process self terms)
+     terms)])
 
 (register-horn-transformer (symbolic-lists-eliminator))
 
 (define current-relations-subst (make-parameter #f))
 
-(define (eliminate term)
-  (match term
-    [(? relation?) (eliminate/relation term)]
-    [(constant _ (? @list?)) (@length term)]
-    [(expression op args ...)
-     (let ([new-args (eliminate* args)])
-       (if (equal? new-args args)
-           term
-           (apply expression `(,op ,@new-args))))]
-    [_ term]))
+(define (eliminate* clauses)
+  (define keys (hash-keys clauses))
+  (for ([key (in-list keys)])
+    (let ([eliminated (map eliminate/clause (hash-ref clauses key))]
+          [rel? (relation? key)])
+      (when rel?
+        (hash-remove! clauses key))
+      (hash-set! clauses (if rel? (eliminate/relation key) key) eliminated))))
 
-(define (eliminate* terms)
-  (map eliminate terms))
+(define (eliminate/clause clause)
+  (let-values ([(conclusion conclusion-additional-premises) (eliminate/term (horn-clause-conclusion clause))]
+               [(premises additional-premises)
+                (for/lists (l1 l2) ([term (in-set (horn-clause-premises clause))])
+                  (eliminate/term term))])
+    (horn-clause (apply set-union
+                        `(,conclusion-additional-premises
+                          ,(list->set premises)
+                          ,@additional-premises))
+                 conclusion)))
+
+(define (eliminate/term term)
+  (match term
+    [(? relation?) (values (eliminate/relation term) (set))]
+    [(constant _ (? @list?)) (values (@length term) (set))];(auto-premises (@length term)))]
+    [(expression op args ...)
+     (let-values ([(new-args premises)
+                   (for/lists (l1 l2) ([arg (in-list args)])
+                     (eliminate/term arg))])
+       (if (equal? new-args args)
+           (values term (set))
+           (values (apply expression `(,op ,@new-args)) (apply set-union (cons (set) premises)))))]
+    [_ (values term (set))]))
 
 (define (eliminate/relation rel)
   (hash-ref! (current-relations-subst) rel
