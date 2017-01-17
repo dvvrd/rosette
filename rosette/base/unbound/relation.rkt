@@ -53,13 +53,13 @@
 (define (fresh-relation f)
   (let* ([read-deps (map type-of (read-dependencies f))]
          [write-deps (map type-of (write-dependencies f))]
-         [result (fresh-relation-constant f read-deps (solvable-domain (term-type f)) write-deps (list (solvable-range (term-type f))))])
+         [result (fresh-relation-constant f read-deps (solvable-domain (term-type f)) write-deps (list (solvable-range (term-type f)) @boolean?))])
     (hash-set! relations-cache f result)
     result))
 
-(define (function-application->relation f read-deps args write-deps ret)
+(define (function-application->relation f read-deps args write-deps ret assertion)
   (let ([rel (hash-ref! relations-cache f (thunk (fresh-relation f)))])
-    (apply expression `(, @app ,rel ,@read-deps ,@args ,@write-deps ,ret))))
+    (apply expression `(, @app ,rel ,@read-deps ,@args ,@write-deps ,ret ,assertion))))
 
 (define (argument-types->relation-type read-dependencies domain write-dependencies range)
   (if (and (empty? read-dependencies)

@@ -35,20 +35,23 @@
     [(_ #:guarantee post) (verify/unbound #:assume #t #:guarantee post)]
     [(_ post) (verify/unbound #:assume #t #:guarantee post)]))
 
-(define (premises-union assertions)
-  (let* ([clauses (apply append (map term->rules assertions))]
+(define (premises-union premises-terms)
+  (let* ([clauses (apply append (map term->rules premises-terms))]
          [premises (apply set-union (cons (set) (map horn-clause-premises clauses)))]
          [conclusions (map horn-clause-conclusion clauses)])
     (set-union premises (list->set conclusions))))
 
 (define (conclusions-union conclusions query additional-premises)
   (let ([conclusions-clauses (apply append (map term->rules conclusions))])
-    (map (λ (conclusion)
-           (horn-clause
-            (set-union
-             (set-add (horn-clause-premises conclusion) (! (horn-clause-conclusion conclusion)))
-             additional-premises)
-            query))
+    (map (λ (conclusion-clause)
+           (let ([premises (set-union (horn-clause-premises conclusion-clause)
+                                      additional-premises)])
+             (horn-clause
+              (set-add
+               premises
+               (! (apply @&& (cons (horn-clause-conclusion conclusion-clause)
+                                    (premises->assertion-constants premises)))))
+              query)))
          conclusions-clauses)))
 
 (define (map-fold proc init lst)

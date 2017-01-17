@@ -17,8 +17,9 @@
 
 (provide @app
          (rename-out [eval-body/horn eval/horn])
-         function-application->symbolic-constant term->rules
-         rules->assertions bound-var? relation?
+         function-application->symbolic-constant
+         premises->assertion-constants
+         term->rules rules->assertions bound-var? relation?
          ite-compactification)
 
 
@@ -28,6 +29,7 @@
 (define current-args (make-parameter #f))
 (define current-rules (make-parameter (make-hash)))
 (define current-mutations-clauses (make-parameter #f))
+(define current-assertion-clauses (make-parameter #f))
 
 (define (add-rules terms-and-guards)
   (for ([term-and-guards terms-and-guards])
@@ -39,17 +41,30 @@
          [premises (cdr term-and-guards)]
          [resulting-clauses
           (if (current-head)
-              (for**/list (current-mutations-clauses)
-                          (λ (clauses)
-                            (let ([additional-premises (if (null? clauses)
-                                                           (set)
-                                                           (apply set-union (map horn-clause-premises clauses)))])
-                              (horn-clause (set-union premises additional-premises)
-                                           (function-application->relation (current-head)
-                                                                           (read-dependencies/original (current-head))
-                                                                           (current-args)
-                                                                           (map horn-clause-conclusion clauses)
-                                                                           value)))))
+              (apply append
+               (for**/list
+                (current-assertion-clauses)
+                (λ (assertions-clauses)
+                  (for**/list
+                   (current-mutations-clauses)
+                   (λ (mutations-clauses)
+                     (let* ([additional-premises
+                             (if (and (null? assertions-clauses)
+                                      (null? mutations-clauses))
+                                 (set)
+                                 (apply set-union (append
+                                                   (map horn-clause-premises assertions-clauses)
+                                                   (map horn-clause-premises mutations-clauses))))]
+                            [premises (set-union premises additional-premises)])
+                       (horn-clause premises
+                                    (function-application->relation (current-head)
+                                                                    (read-dependencies/original (current-head))
+                                                                    (current-args)
+                                                                    (map horn-clause-conclusion mutations-clauses)
+                                                                    value
+                                                                    (apply @&&
+                                                                           (append (map horn-clause-conclusion assertions-clauses)
+                                                                                   (premises->assertion-constants premises)))))))))))
               (list (horn-clause premises value)))])
     (hash-update! (current-rules) (function->relation (current-head))
                   (λ (rules) (append rules resulting-clauses))
@@ -60,16 +75,18 @@
 (define (eval-body/horn t head args assertions)
   (parameterize ([current-head head]
                  [current-args args])
-    (define mutations-clauses
+    (define-values (mutations-clauses assertion-clauses)
       (parameterize ([current-head #f]
                      [current-args #f])
-        (for/list ([m (write-dependencies head)])
-          (term->rules m))))
+        (values
+         (for/list ([m (write-dependencies head)])
+           (term->rules m))
+         (for/list ([a assertions])
+           (term->rules a)))))
 
-    (parameterize ([current-mutations-clauses mutations-clauses])
-      (add-rules
-       (compose-guards (list (cons #t (list->set assertions)))
-                       (term->horn-clauses #t t))))))
+    (parameterize ([current-mutations-clauses mutations-clauses]
+                   [current-assertion-clauses assertion-clauses])
+      (eval/horn t))))
 
 (define (eval/horn t)
   (add-rules (term->horn-clauses #t t)))
@@ -157,11 +174,21 @@
     [_ t]))
 
 (define (function-application->symbolic-constant f args read-deps mutations)
-  (let* ([id (gensym 'ε)]
-         [ε (constant id (solvable-range (type-of f)))]
-         [auto-premise (function-application->relation f read-deps args mutations ε)])
+  (let* ([result-id (gensym 'ε)]
+         [ε (constant result-id (solvable-range (type-of f)))]
+         [α (constant (gensym 'α) @boolean?)]
+         [auto-premise (function-application->relation f read-deps args mutations ε α)])
     (register-auto-constants (cons ε mutations) (eliminate-dependent-apps auto-premise))
     ε))
+
+(define (premises->assertion-constants premises)
+  (filter identity
+          (set-map premises relation-application->assertion-constant)))
+
+(define (relation-application->assertion-constant expr)
+  (match expr
+    [(expression @app f args ...) #:when (relation? f) (last args)]
+    [_ #f]))
 
 (define (rules->assertions clauses)
   (define copy (hash-copy (current-rules)))
