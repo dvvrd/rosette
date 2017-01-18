@@ -1,6 +1,7 @@
 #lang racket
 
 (require
+  (for-syntax racket/syntax)
   "function.rkt"
   (only-in "../core/bool.rkt" @boolean?)
   (only-in "../core/function.rkt" ~>)
@@ -28,7 +29,16 @@
          #,(make-solvable-function #'#'head
                                    #'(args ...)
                                    #'type
-                                   #'(thunk body body-rest ...))))]))
+                                   #'(thunk body body-rest ...))))]
+    [(_ head (functions ...) (args ...) type body body-rest ...)
+     (with-syntax ([head/higher (format-id stx "~a/higher" #'head)])
+       (let ([result
+       (quasisyntax/loc stx
+         (define (head functions ... args ...)
+           (define/unbound/higher head/higher (functions ...) (args ...) type body body-rest ...)
+           (head/higher args ...)))
+ ]) (printf "Transformed to ~a\n" result) result)
+       )]))
 
 ; define/unbound/higher acts like define/unbound, but instantiates horn-clauses for each new set
 ; of functions passed as parameters. Those functions should not be contained in args, instead
