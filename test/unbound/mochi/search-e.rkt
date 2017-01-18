@@ -15,6 +15,6 @@
 (define (test x) (= x m))
 (define e (exists test mult3 0 n))
 
-; Expecting unsat
+; Expecting sat
 (verify/unbound #:assume (assert (>= e 0))
-                #:guarantee (assert (and (<= 0 e) (< e n))))
+                #:guarantee (assert (and (< 0 e) (< e n))))
