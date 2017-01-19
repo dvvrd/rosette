@@ -11,7 +11,7 @@
 (define/unbound (f n st)  (~> integer? integer? integer?)
   (if (> n 0) (lock st) st))
 (define/unbound (g n st) (~> integer? integer? integer?)
-  (if (>= n 0) (unlock st) st))
+  (if (> n 0) (unlock st) st))
 
-; Expecting sat
+; Expecting unsat
 (verify/unbound (assert (zero? (g n (f n 0)))))
