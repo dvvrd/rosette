@@ -88,7 +88,7 @@
      (fprintf port "listof ~a" (@list-element-type self)))]
   #:methods gen:implicitly-dependent
   [(define (implicit-dependencies self constant)
-     (list (@length constant) (@car constant #f) (@cdr constant #f)))]
+     (list (@length constant) (@car constant #f)))]
   #:methods gen:implicitly-constrained
   [(define (implicit-constraints self constant)
      (set (@>= (@length constant) 0)))])
