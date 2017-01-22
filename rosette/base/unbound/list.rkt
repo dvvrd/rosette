@@ -3,7 +3,7 @@
 (require
   (for-syntax racket/syntax (only-in "../core/lift.rkt" with@))
   racket/generic racket/provide racket/syntax
-  "../core/term.rkt" "define.rkt" "horn.rkt"
+  "../core/term.rkt" "auto-constants.rkt" "define.rkt" "horn.rkt"
   (prefix-in bound/ "../adt/list.rkt")
   (only-in "../adt/seq.rkt" lift/apply/higher-order)
   (only-in "../form/control.rkt" @cond @if)
@@ -12,10 +12,10 @@
   (only-in "../core/function.rkt" ~>)
   (only-in "../core/lift.rkt" lift-id unsafe-merge**)
   (only-in "../core/merge.rkt" merge* unsafe-merge*)
+  (only-in "../core/polymorphic.rkt" generic-merge*)
   (only-in "../core/real.rkt" @integer? @>= @= @< @+ @-)
   (only-in "../core/safe.rkt" assert assert-bound argument-error arguments-error assert-arity-includes assert-some)
   (only-in "../core/union.rkt" union in-union-guards union-guards union-filter union-contents)
-  (only-in "auto-constants.rkt" register-auto-constant auto-premises)
   (only-in "dependencies.rkt" gen:implicitly-dependent)
   (only-in "lemmas.rkt" associative?)
   (only-in "relation.rkt" relation? fresh-relation))
@@ -43,10 +43,9 @@
       [_ #f]))
   #:methods gen:type
   [(define (least-common-supertype self other)
-     (cond [(equal? self other) self]
-           [(equal? other list?) list?]
-           [(equal? other bound/@list?) bound/@list?]
-           [else @any/c]))
+     (match other
+       [(or (== self) (== pair?) (== list?) (== bound/@pair?) (== bound/@list?)) self]
+       [_ @any/c]))
    (define (type-name self) (string->symbol (~a self)))
    (define (type-applicable? self) #f)
    (define (type-cast self v [caller 'type-cast])
@@ -66,8 +65,8 @@
                   u])]
               [else (assert #f (argument-error caller (~a list?) v))])]
        [_ (assert #f (argument-error caller (~a list?) v))]))
-   (define (type-eq? self u v)    (@eq?    (@length u) (@length v)))
-   (define (type-equal? self u v) (@equal? (@length u) (@length v)))
+   (define-list-comparator type-eq @eq?)
+   (define-list-comparator type-equal? @equal?)
    (define (type-compress self force? ps) ps)
    (define (type-construct self vs)
      (cond
@@ -89,7 +88,28 @@
      (fprintf port "listof ~a" (@list-element-type self)))]
   #:methods gen:implicitly-dependent
   [(define (implicit-dependencies self constant)
-     (list (@length constant) (@car constant #f) (@cdr constant #f)))])
+     (list (@length constant) (@car constant #f) (@cdr constant #f)))]
+  #:methods gen:implicitly-constrained
+  [(define (implicit-constraints self constant)
+     (set (@>= (@length constant) 0)))])
+
+(define-syntax-rule (define-list-comparator comparator =?)
+  (define (comparator self u v)
+    (unless (self u) (set!-values (u v) (values v u)))
+    (match v
+      [(? self) (@equal? (@length u) (@length v))]
+      [(union gvs _)
+       (generic-merge*
+        (map
+         (λ (gv)
+           (cons (car gv) (@equal? u (cdr gv))))
+         gvs))]
+      [(? null?) (@null? u)]
+      [(or (? pair?) (? list?) (? bound/@pair?) (? bound/@list?))
+       (&& (=? (@length u) (@length v))
+           (=? (@car u) (@car v))
+           (=? (@cdr u) (@cdr v)))]
+      [_ #f])))
 
 ;; ----------------- Storage of information about list constants ----------------- ;;
 
@@ -392,28 +412,22 @@
       (hash-set! clauses (if rel? (eliminate/relation key) key) eliminated))))
 
 (define (eliminate/clause clause)
-  (let-values ([(conclusion conclusion-additional-premises) (eliminate/term (horn-clause-conclusion clause))]
-               [(premises additional-premises)
-                (for/lists (l1 l2) ([term (in-set (horn-clause-premises clause))])
-                  (eliminate/term term))])
-    (horn-clause (apply set-union
-                        `(,conclusion-additional-premises
-                          ,(list->set premises)
-                          ,@additional-premises))
-                 conclusion)))
+  (let ([conclusion (eliminate/term (horn-clause-conclusion clause))]
+        [premises (set-map (horn-clause-premises clause) eliminate/term)])
+    (horn-clause premises conclusion)))
 
 (define (eliminate/term term)
   (match term
-    [(? relation?) (values (eliminate/relation term) (set))]
-    [(constant _ (? @list?)) (values (@length term) (set))];(auto-premises (@length term)))]
+    [(? relation?) (eliminate/relation term)]
+    [(constant _ (? @list?)) (@length term)]
     [(expression op args ...)
-     (let-values ([(new-args premises)
-                   (for/lists (l1 l2) ([arg (in-list args)])
-                     (eliminate/term arg))])
+     (let ([new-args (map eliminate/term args)])
        (if (equal? new-args args)
-           (values term (set))
-           (values (apply expression `(,op ,@new-args)) (apply set-union (cons (set) premises)))))]
-    [_ (values term (set))]))
+           term
+           (apply expression `(,op ,@new-args))))]
+    [(list _ ...) (@length term)]
+    [(cons _ _) (@length term)]
+    [_ term]))
 
 (define (eliminate/relation rel)
   (hash-ref! (current-relations-subst) rel

@@ -2,13 +2,13 @@
 
 (require
   racket/syntax
-  (only-in "../core/bool.rkt" && || ! @&& @|| @!)
+  (only-in "../core/bool.rkt" && || ! @&& @|| @! @boolean?)
   (only-in "../core/term.rkt"
            constant constant? expression @app
            type-of solvable-domain solvable-range type-applicable?)
   (only-in "../core/polymorphic.rkt"
            ite ite* guarded)
-  (only-in "../core/bool.rkt" @boolean? @!)
+  (only-in "../core/union.rkt" union union-guards)
   (only-in "bound-vars.rkt" bound-var?)
   (only-in "mutations.rkt" state->mutations)
   (only-in "utils.rkt" for**/list gensym)
@@ -139,6 +139,13 @@
                                 [g (term->horn-clauses #f g)])
                      (compose-guards g (term->horn-clauses tail-position? v))))
                  gvs))]
+    [(union gvs _)
+     (apply append
+            (map (λ (gv)
+                   (match-let* ([(cons g v) gv]
+                                [g (term->horn-clauses #f g)])
+                     (compose-guards g (term->horn-clauses tail-position? v))))
+                 gvs))]
     [(or (expression (== @||) (expression (== @&&) c t) (expression (== @&&) (expression (== @!) c) e))
          (expression (== @||) (expression (== @&&) c t) (expression (== @&&) e (expression (== @!) c)))
          (expression (== @||) (expression (== @&&) (expression (== @!) c) e) (expression (== @&&) c t))
@@ -152,9 +159,21 @@
      (for**/list (terms->horn-clauses args)
                  (λ (args)
                    (cons (apply expression `(,op ,@(map car args)))
-                         (apply set-union (map cdr args)))))]
+                         (apply set-union (cons (set) (map cdr args))))))]
     [(constant _ _)
      (list (cons t (auto-premises t)))]
+    [(list _ ...)
+     (for**/list (terms->horn-clauses t)
+                 (λ (xs)
+                   (cons (map car xs)
+                         (apply set-union (cons (set) (map cdr xs))))))]
+    [(cons x y)
+     (let ([xs (term->horn-clauses #f x)]
+           [ys (term->horn-clauses #f y)])
+       (for*/list ([xp (in-list xs)]
+                   [yp (in-list ys)])
+         (cons (cons (car xp) (car yp))
+               (set-union (cdr xp) (cdr yp)))))]
     [_ (list (cons t (set)))]))
 
 (define (terms->horn-clauses ts)

@@ -5,7 +5,7 @@
   (for-syntax racket syntax/parse)
   (only-in "../core/bool.rkt" with-asserts)
   (only-in "../core/term.rkt"
-           constant constant? expression type-of
+           constant constant? expression term-type
            solvable-domain solvable-range
            term-cache clear-terms!)
   (only-in "contracts.rkt" λ/typed)
@@ -62,13 +62,19 @@
         (list-ref domain i)
         (error 'define "Too many arguments!"))))
 
-(define-syntax-rule (speculate/symbolized body)
-  (let-values
-      ([(pair assertions)
-        (with-asserts
-            (let-values ([(pair _) (speculate* body)])
-              pair))])
-    (values (car pair) (cdr pair) assertions)))
+(define-syntax-rule (speculate/symbolized body head-constant)
+  (with-handlers ([exn:fail:syntax? raise]
+                  [exn:fail? (λ (err)
+                               (values
+                                (constant (gensym '⊥) (solvable-range (term-type head-constant)))
+                                '()
+                                '(#f)))])
+    (let-values
+        ([(pair assertions)
+          (with-asserts
+              (let-values ([(pair _) (speculate* body)])
+                pair))])
+      (values (car pair) (cdr pair) assertions))))
 
 (define (already-speculated? id) (and (dict-has-key? applicable-constants id) (not (called? id))))
 (define (speculating-currently? id) (called? id))
@@ -79,7 +85,8 @@
 (define (instantiate-high-order-solvable-function id functions constructor)
   (if (empty? functions)
       (constructor)
-      (hash-ref! high-order-functions (cons id functions) constructor)))
+      ; Of course comparing object-name instead of function itself can introduce collisions, but there is no other way.
+      (hash-ref! high-order-functions (cons id (map object-name functions)) constructor)))
 
 (define applicable-constants (make-free-id-table))
 (define delimited-encodings (make-parameter (list)))
@@ -109,12 +116,13 @@
                       read-dependencies
                       constants))
         (with-call head
-          (apply (constant (gensym) (type-of head-constant)) args)))))
+          (apply (constant (gensym) (term-type head-constant)) args)))))
 
 (define (solvable-function->horn-clauses head head-constant
                                          args arg-constants
                                          body term-cache-snapshot)
-  (define-values (term state/after assertions) (speculate/symbolized (body)))
+  (define-values (term state/after assertions)
+    (speculate/symbolized (body) head-constant))
    ; TODO: make it more effective
   (define scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
   (set-up-read-dependencies head-constant
@@ -126,7 +134,7 @@
   (define (delimited-encoding)
     (when (recursive? head)
       ; For recusive functions we need second execution, because we know set of write-dependencies only now.
-      (set!-values (term state/after assertions) (speculate/symbolized (body)))
+      (set!-values (term state/after assertions) (speculate/symbolized (body) head-constant))
       (set! scoped-constants (hash-values-diff+filter constant? (term-cache) (unbox term-cache-snapshot)))
       (set-up-read-dependencies head-constant
                                 term
@@ -145,7 +153,7 @@
             (eval-delimited-encodings head args)
             (symbolize head args)]
            [else
-            (constant (gensym) (solvable-range (type-of head-constant)))])]
+            (constant (gensym) (solvable-range (term-type head-constant)))])]
         [else
          (delimited-encoding)
          (symbolize head args)]))

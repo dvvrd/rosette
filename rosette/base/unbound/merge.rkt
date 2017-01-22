@@ -113,6 +113,9 @@
   (let-values ([(rel _) (rel-and-args-of application)])
     rel))
 
+(define (equal?/unbound x y)
+  (or (@equal? x y) (@equal? y x)))
+
 (define (synchronized-by?/solve f-interpreted-premises g-interpreted-premises f-conclusion-args g-conclusion-args f-args g-args)
   (let ([premises
          (map @!
@@ -125,17 +128,17 @@
                                       [g-arg-val (list-ref g-conclusion-args g-arg)]
                                       [f-arg-deps (implicit-dependencies f-arg-val)]
                                       [g-arg-deps (implicit-dependencies g-arg-val)])
-                                 (cons (@equal? f-arg-val g-arg-val)
+                                 (cons (equal?/unbound f-arg-val g-arg-val)
                                        (for/list ([f-dep f-arg-deps]
                                                   [g-dep g-arg-deps])
-                                         (@equal? f-dep g-dep))))))))])
+                                         (equal?/unbound f-dep g-dep))))))))])
     (λ (f-recursive-premise g-recursive-premise)
       (let* ([f-app-args (args-of f-recursive-premise)]
              [g-app-args (args-of g-recursive-premise)]
              [conclusion (apply @&& (for/list ([f-arg f-args]
                                                [g-arg g-args])
-                                      (@equal? (list-ref f-app-args f-arg)
-                                               (list-ref g-app-args g-arg))))])
+                                      (equal?/unbound (list-ref f-app-args f-arg)
+                                                      (list-ref g-app-args g-arg))))])
         (with-handlers ([exn:fail? (λ (err) #f)])
           (unsat?
            (verify (assert (apply || (cons conclusion premises))))))))))
@@ -348,10 +351,10 @@
                                [g-arg-val (list-ref g-conclusion-args g-arg)]
                                [f-arg-deps (map (λ (d) (if f-subst (hash-ref f-subst d d) d)) (implicit-dependencies f-arg-val))]
                                [g-arg-deps (map (λ (d) (if g-subst (hash-ref g-subst d d) d)) (implicit-dependencies g-arg-val))])
-                          (cons (@equal? f-arg-val g-arg-val)
+                          (cons (equal?/unbound f-arg-val g-arg-val)
                                 (for/list ([f-dep f-arg-deps]
                                            [g-dep g-arg-deps])
-                                  (@equal? f-dep g-dep))))))]
+                                  (equal?/unbound f-dep g-dep))))))]
                     [(φs linears recursives)
                      (for/lists (l1 l2 l3) ([rel sorted-rels]
                                             [clause cur-clauses])
@@ -409,14 +412,12 @@
           [g-ind (index-of g-app)])
       (synchronize f-ind g-ind '())
       (let*-values
-          ([(f-rel f-args*) (rel-and-args-of f-app)]
-           [(g-rel g-args*) (rel-and-args-of g-app)]
-           [(f-app f-rel f-args* g-app g-rel g-args*)
+          ([(f-rel f-args) (rel-and-args-of f-app)]
+           [(g-rel g-args) (rel-and-args-of g-app)]
+           [(f-app f-rel f-args g-app g-rel g-args)
             (if (term<? f-rel g-rel)
-                (values f-app f-rel f-args* g-app g-rel g-args*)
-                (values g-app g-rel g-args* f-app f-rel f-args*))]
-           [(f-read-deps f-args f-write-deps f-ret) (decompose-arguments f-rel f-args*)]
-           [(g-read-deps g-args g-write-deps g-ret) (decompose-arguments g-rel g-args*)]
+                (values f-app f-rel f-args g-app g-rel g-args)
+                (values g-app g-rel g-args f-app f-rel f-args))]
            [(initial-synchronizations)
             (if (and (merge-accuracy) (>= (merge-accuracy) 1))
                 (for*/list ([f-arg (in-range (length f-args))]
@@ -424,13 +425,11 @@
                             #:when (and (equal? (list-ref f-args f-arg)
                                                 (list-ref g-args g-arg))
                                         (synchronized-by?/definitions f-rel g-rel
-                                                                      (list (+ f-arg (length f-read-deps)))
-                                                                      (list (+ g-arg (length g-read-deps)))
+                                                                      (list f-arg)
+                                                                      (list g-arg)
                                                                       clauses)))
-                  (synchronize f-ind g-ind (list (cons (+ f-arg (length f-read-deps))
-                                                       (+ g-arg (length g-read-deps)))))
-                  (cons (+ f-arg (length f-read-deps))
-                        (+ g-arg (length g-read-deps))))
+                  (synchronize f-ind g-ind (list (cons f-arg g-arg)))
+                  (cons f-arg g-arg))
                 (list))])
         (when (and (merge-accuracy) (>= (merge-accuracy) 2))
           (for* ([len (range 2 (min (length initial-synchronizations) (add1 (merge-accuracy))))]

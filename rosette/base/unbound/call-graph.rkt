@@ -1,4 +1,3 @@
-
 #lang racket
 
 (require racket/dict syntax/id-table syntax/id-set)
@@ -109,7 +108,7 @@
         [cache (associations-cache associations)])
     (if (dict-has-key? cache id)
         (free-id-table-ref cache id)
-        (let* ([current-assoc (free-id-table-ref! storage id (mutable-free-id-set))]
+        (let* ([current-assoc (free-id-table-ref! storage id '())]
                [_ (free-id-table-set! cache id current-assoc)]
                [result (for/fold ([acc current-assoc])
                                  ([v (in-callees id)])

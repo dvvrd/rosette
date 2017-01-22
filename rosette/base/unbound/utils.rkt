@@ -66,7 +66,7 @@
      (let ([new-args (map (curry substitute/constants subst) args)])
        (cond [(equal? args new-args) t]
              [else (apply expression `(,op ,@new-args))]))]
-    [(constant _ _) (if (hash-has-key? subst t) (hash-ref subst t t) t)]
+    [(constant _ _) (if (hash-has-key? subst t) (hash-ref subst t (thunk t)) t)]
     [(list _ ...) (map (curry substitute/constants subst) t)]
     [_ t]))
 
