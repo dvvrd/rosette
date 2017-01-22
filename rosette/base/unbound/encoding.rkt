@@ -89,7 +89,7 @@
       (eval/horn t))))
 
 (define (eval/horn t)
-  (add-rules (term->horn-clauses #t t)))
+  (add-rules (term->horn-clauses #t #t t)))
 
 (define (term->rules t)
   (parameterize ([current-rules (make-hash)])
@@ -110,10 +110,10 @@
 
 (define ite-compactification (make-parameter #f))
 
-(define (term->horn-clauses tail-position? t)
+(define (term->horn-clauses tail-position? unroll-auto-premises? t)
   (match t
     [(expression (== dependent-app) (expression (== @app) f args ...) read-deps mutations)
-     (for**/list (terms->horn-clauses args)
+     (for**/list (terms->horn-clauses unroll-auto-premises? args)
                  (λ (args)
                    (let ([result
                           (function-application->symbolic-constant f
@@ -126,9 +126,9 @@
                                         (map cdr args)))))))]
     [(expression (== ite) test then else)
      #:when (or tail-position? (not (ite-compactification)))
-     (let ([test (term->horn-clauses #f test)]
-           [then (term->horn-clauses tail-position? then)]
-           [else (term->horn-clauses tail-position? else)])
+     (let ([test (term->horn-clauses #f unroll-auto-premises? test)]
+           [then (term->horn-clauses tail-position? unroll-auto-premises? then)]
+           [else (term->horn-clauses tail-position? unroll-auto-premises? else)])
        (append (compose-guards test then)
                (compose-guards test else #t)))]
     [(expression (== ite*) gvs)
@@ -136,15 +136,15 @@
      (apply append
             (map (λ (gv)
                    (match-let* ([(guarded g v) gv]
-                                [g (term->horn-clauses #f g)])
-                     (compose-guards g (term->horn-clauses tail-position? v))))
+                                [g (term->horn-clauses #f unroll-auto-premises? g)])
+                     (compose-guards g (term->horn-clauses tail-position? unroll-auto-premises? v))))
                  gvs))]
     [(union gvs _)
      (apply append
             (map (λ (gv)
                    (match-let* ([(cons g v) gv]
-                                [g (term->horn-clauses #f g)])
-                     (compose-guards g (term->horn-clauses tail-position? v))))
+                                [g (term->horn-clauses #f unroll-auto-premises? g)])
+                     (compose-guards g (term->horn-clauses tail-position? unroll-auto-premises? v))))
                  gvs))]
     [(or (expression (== @||) (expression (== @&&) c t) (expression (== @&&) (expression (== @!) c) e))
          (expression (== @||) (expression (== @&&) c t) (expression (== @&&) e (expression (== @!) c)))
@@ -154,30 +154,40 @@
          (expression (== @||) (expression (== @&&) t c) (expression (== @&&) e (expression (== @!) c)))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) c t))
          (expression (== @||) (expression (== @&&) e (expression (== @!) c)) (expression (== @&&) t c)))
-     (term->horn-clauses tail-position? (expression ite c t e))]
+     (term->horn-clauses tail-position? unroll-auto-premises? (expression ite c t e))]
     [(expression op args ...)
-     (for**/list (terms->horn-clauses args)
+     (for**/list (terms->horn-clauses unroll-auto-premises? args)
                  (λ (args)
                    (cons (apply expression `(,op ,@(map car args)))
                          (apply set-union (cons (set) (map cdr args))))))]
     [(constant _ _)
-     (list (cons t (auto-premises t)))]
+     (if unroll-auto-premises?
+         (for**/list (set-map (auto-premises t) (curry term->horn-clauses #f #f))
+                     (λ (ap)
+                       (cons t
+                             (apply set-union
+                                    (cons (set)
+                                          (map (λ (p)
+                                                 (set-add (cdr p)
+                                                          (car p)))
+                                               ap))))))
+         (list (cons t (set))))]
     [(list _ ...)
-     (for**/list (terms->horn-clauses t)
+     (for**/list (terms->horn-clauses unroll-auto-premises? t)
                  (λ (xs)
                    (cons (map car xs)
                          (apply set-union (cons (set) (map cdr xs))))))]
     [(cons x y)
-     (let ([xs (term->horn-clauses #f x)]
-           [ys (term->horn-clauses #f y)])
+     (let ([xs (term->horn-clauses #f unroll-auto-premises? x)]
+           [ys (term->horn-clauses #f unroll-auto-premises? y)])
        (for*/list ([xp (in-list xs)]
                    [yp (in-list ys)])
          (cons (cons (car xp) (car yp))
                (set-union (cdr xp) (cdr yp)))))]
     [_ (list (cons t (set)))]))
 
-(define (terms->horn-clauses ts)
-  (map (curry term->horn-clauses #f) ts))
+(define (terms->horn-clauses unroll-auto-premises? ts)
+  (map (curry term->horn-clauses #f unroll-auto-premises?) ts))
 
 (define (eliminate-dependent-apps t)
   (match t
