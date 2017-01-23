@@ -1,7 +1,6 @@
 #lang rosette/unbound
 
-(dbg-level 1)
-(error-print-width 1000)
+(dbg-level 0)
 (define-symbolic n integer?)
 
 (define/unbound (make-list n) (~> integer? (listof integer?))

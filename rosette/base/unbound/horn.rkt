@@ -59,7 +59,9 @@
   (cond
     [(horn-clause? clause)
      (let ([result (horn-clause->implication clause)])
-       (when (and result (positive? (dbg-level))) (printf "Rule: ~a\n" clause))
+       (when (and result (positive? (dbg-level)))
+         (parameterize ([error-print-width 10000])
+           (printf "Rule: ~a\n" clause)))
        result)]
     [else clause]))
 
