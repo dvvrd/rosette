@@ -37,6 +37,7 @@
   (lambda (self v)
     (match v
       [(? list?) (andmap (@list-element-type self) v)]
+      [(? pair?) (and ((@list-element-type self) (car v)) (self (cdr v)))]
       [(? typed? (app get-type (== self))) #t]
       [(union _ (or (== @list?) (== list?) (== @any/c)))
        (apply || (for/list ([g (in-union-guards v self)]) g))]
@@ -51,6 +52,7 @@
    (define (type-cast self v [caller 'type-cast])
      (match v
        [(? typed? (app get-type (== self))) v]
+       [(? pair?) v]
        [(? list?) v]
        [(union xs t)
         (cond [(subtype? t self) v]
