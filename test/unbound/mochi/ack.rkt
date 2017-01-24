@@ -9,5 +9,6 @@
         [else (ackerman (sub1 m) (ackerman m (sub1 n)))]))
 
 ; Expecting unsat
-(verify/unbound #:assume (assert (and (>= m 0) (>= n 0)))
-                #:guarantee (assert (>= (ackerman m n) n)))
+(time
+ (verify/unbound #:assume (assert (and (>= m 0) (>= n 0)))
+                 #:guarantee (assert (>= (ackerman m n) n))))

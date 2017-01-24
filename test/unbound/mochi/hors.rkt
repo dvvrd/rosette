@@ -17,4 +17,5 @@
 (define (s n q) (f c n q))
 
 ; Expecting unsat
-(verify/unbound (assert (s n 0)))
+(time
+ (verify/unbound (assert (s n 0))))

@@ -16,5 +16,6 @@
       (cons n (make-list (sub1 n)))))
 
 ; Expecting unsat
-(verify/unbound
- (assert (for-all check (make-list n))))
+(time
+ (verify/unbound
+  (assert (for-all check (make-list n)))))

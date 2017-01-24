@@ -10,4 +10,5 @@
       (f (repeat f (- n 1) s))))
 
 ; Expecting sat
-(verify/unbound (assert (> (repeat succ n 0) n)))
+(time
+ (verify/unbound (assert (> (repeat succ n 0) n))))

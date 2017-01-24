@@ -19,7 +19,8 @@
   (= (* 2 x) (+ x x)))
 
 ; Expecting unsat
-(let ([xs (make-list n)])
-  (verify/unbound
-   #:assume (assert (not (null? xs)))
-   #:guarantee (assert (trivial-query (nth 0 xs)))))
+(time
+ (let ([xs (make-list n)])
+   (verify/unbound
+    #:assume (assert (not (null? xs)))
+    #:guarantee (assert (trivial-query (nth 0 xs))))))

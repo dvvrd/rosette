@@ -17,6 +17,7 @@
       (cons n (make-list (sub1 n)))))
 
 ; Expecting unsat
-(verify/unbound
- #:assume (assert (> len 0))
- #:guarantee (assert (> (length (reverse null (make-list len))) 0)))
+(time
+ (verify/unbound
+  #:assume (assert (> len 0))
+  #:guarantee (assert (> (length (reverse null (make-list len))) 0))))

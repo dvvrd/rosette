@@ -8,4 +8,5 @@
         [else (+ 1 (copy (- n 1)))]))
 
 ; Expecting unsat
-(verify/unbound (assert (= (copy (copy n)) n)))
+(time
+ (verify/unbound (assert (= (copy (copy n)) n))))

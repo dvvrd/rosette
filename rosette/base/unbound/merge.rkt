@@ -80,7 +80,7 @@
 ; and large amount of arguments merge time will increase dramaticly.
 (define merge-accuracy (make-parameter 1))
 
-(define (<-> id [xs #f] [ys #f] [ω #f])
+(define (<-> id [xs #f] [ys #f] [xs/orig #f] [ys/orig #f] [ω #f])
   (hash-ref!
    matchings-cache id
    (and ω xs ys
@@ -88,10 +88,12 @@
      (let ([xs-to-match (list->mutable-set xs)]
            [ys-to-match (list->mutable-set ys)]
            [matching (mutable-set)])
-       (for ([x xs])
-         (for ([y ys])
+       (for ([x xs]
+             [x/orig xs/orig])
+         (for ([y ys]
+               [y/orig ys/orig])
            (when (ω x y)
-             (set-add! matching (list x y))
+             (set-add! matching (list x/orig y/orig))
              (set-remove! xs-to-match x)
              (set-remove! ys-to-match y))))
        (and
@@ -154,16 +156,20 @@
         [(equal? rel f) (values interpreted linear (cons premise recursive))]
         [else           (values interpreted (cons premise linear) recursive)]))))
 
-(define (synchronized-by?/clauses f g f-id g-id f-args g-args)
+(define (synchronized-by?/clauses f g f/orig g/orig f-id g-id f-args g-args)
   (let*-values
       ([(f-rel f-concl-args) (rel-and-args-of (horn-clause-conclusion f))]
        [(g-rel g-concl-args) (rel-and-args-of (horn-clause-conclusion g))]
        [(φ f-linear f-recursive) (split-premises (horn-clause-premises f) f-rel)]
        [(ψ g-linear g-recursive) (split-premises (horn-clause-premises g) g-rel)]
+       [(φ/orig f-linear/orig f-recursive/orig) (split-premises (horn-clause-premises f/orig) f-rel)]
+       [(ψ/orig g-linear/orig g-recursive/orig) (split-premises (horn-clause-premises g/orig) g-rel)]
        [(ω) (synchronized-by?/solve φ ψ f-concl-args g-concl-args f-args g-args)])
     (<-> (list f-rel g-rel f-id g-id f-args g-args)
          (if (empty? f-recursive) (list (horn-clause-conclusion f)) f-recursive)
          (if (empty? g-recursive) (list (horn-clause-conclusion g)) g-recursive)
+         (if (empty? f-recursive/orig) (list (horn-clause-conclusion f/orig)) f-recursive/orig)
+         (if (empty? g-recursive/orig) (list (horn-clause-conclusion g/orig)) g-recursive/orig)
          ω)))
 
 (define (synchronized-by?/definitions f g f-args g-args clauses)
@@ -181,8 +187,9 @@
                        [f-id (in-naturals)]
                        #:when #t
                        [g-clause g-clauses]
+                       [g-clause/orig (hash-ref clauses g)]
                        [g-id (in-naturals)])
-               (synchronized-by?/clauses f-clause g-clause f-id g-id f-args g-args))))))))
+               (synchronized-by?/clauses f-clause g-clause f-clause g-clause/orig f-id g-id f-args g-args))))))))
 
 ;; ----------------- Merging ----------------- ;;
 

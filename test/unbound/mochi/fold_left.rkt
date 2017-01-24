@@ -12,6 +12,7 @@
   (+ x y))
 
 ; Expecting unsat
-(verify/unbound
- (assert
-  (>= (foldl add m (make-list n)) m)))
+(time
+ (verify/unbound
+  (assert
+   (>= (foldl add m (make-list n)) m))))

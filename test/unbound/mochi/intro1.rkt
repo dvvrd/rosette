@@ -10,5 +10,6 @@
   (assert (positive? y)))
 
 ; Expecting unsat
-(verify/unbound #:assume (assert (> n 0))
-                #:guarantee (assert (f n h)))
+(time
+ (verify/unbound #:assume (assert (> n 0))
+                 #:guarantee (assert (f n h))))

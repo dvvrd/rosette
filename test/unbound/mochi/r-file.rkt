@@ -1,7 +1,6 @@
 #lang rosette/unbound
 
-(dbg-level 1)
-(error-print-width 1000)
+(dbg-level 0)
 (define-symbolic b2 b3 integer?)
 
 (define/unbound (loop x) (~> integer? integer?)
@@ -44,9 +43,10 @@
       (f x #f st)))
 
 ; Expecting unsat
-(verify/unbound
- (assert
-  (positive?
-   (if (> b2 0)
-       (g b3 #t opened)
-       (g b3 #f init)))))
+(time
+ (verify/unbound
+  (assert
+   (positive?
+    (if (> b2 0)
+        (g b3 #t opened)
+        (g b3 #f init))))))

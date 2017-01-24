@@ -2,7 +2,7 @@
 
 (current-bitwidth #f)
 (dbg-level 0)
-(define-symbolic a x y z integer?)
+(define-symbolic a x y integer?)
 
 (define/unbound (mult x y) (~> integer? integer? integer?)
   (if (= x 0) 0

@@ -13,5 +13,6 @@
   (if (and (>= y 0) (> x 0)) (abs r) r))
 
 ; Expecting sat
-(verify/unbound #:assume (assert (and (> m 0) (andmap non-negative? xs)))
-                #:guarantee (assert (>= (foldl quotient m xs) 0)))
+(time
+ (verify/unbound #:assume (assert (and (> m 0) (andmap non-negative? xs)))
+                 #:guarantee (assert (>= (foldl quotient m xs) 0))))

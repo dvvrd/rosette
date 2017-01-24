@@ -16,5 +16,6 @@
 (define e (exists test mult3 0 n))
 
 ; Expecting sat
-(verify/unbound #:assume (assert (>= e 0))
-                #:guarantee (assert (and (< 0 e) (< e n))))
+(time
+ (verify/unbound #:assume (assert (>= e 0))
+                 #:guarantee (assert (and (< 0 e) (< e n)))))

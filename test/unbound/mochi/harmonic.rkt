@@ -24,4 +24,5 @@
   (= (* 2 x) (+ x x)))
 
 ; Expecting unsat
-(verify/unbound (assert (trivial-query (harmonic n))))
+(time
+ (verify/unbound (assert (trivial-query (harmonic n)))))

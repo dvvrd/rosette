@@ -14,4 +14,5 @@
   (if (> n 0) (unlock st) st))
 
 ; Expecting unsat
-(verify/unbound (assert (zero? (g n (f n 0)))))
+(time
+ (verify/unbound (assert (zero? (g n (f n 0))))))

@@ -9,6 +9,7 @@
 (define/unbound (f x y) (~> integer? integer? integer?)
   (if (>= x y) x y))
 
-(let ([m (max f x y z)])
+(time
+ (let ([m (max f x y z)])
   ; Expecting unsat
-  (verify/unbound (assert (= (f x m) m))))
+   (verify/unbound (assert (= (f x m) m)))))

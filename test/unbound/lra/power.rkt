@@ -2,6 +2,7 @@
 
 (require rackunit rackunit/text-ui rosette/lib/roseunit)
 
+(dbg-level 0)
 (current-bitwidth #f)
 (define-symbolic x y a b integer?)
 
@@ -11,11 +12,11 @@
 
 (define/unbound (pwr a x) (~> integer? integer? integer?)
   (if (= a 0) 1
-      (mult x (pwr (- a 1) x))))
+      (mult (pwr (- a 1) x) x)))
 
 (define pwr-tests
   (test-suite+
-   "[unbound] Tests for lra/pwr.rkt"
+   "[unbound] Tests for lra/power.rkt"
 
    (check-unsat
      (verify/unbound (assert (= (mult 23 10) 230)))
@@ -65,6 +66,10 @@
 
    (check-unsat
     (verify/unbound #:assume (assert (and (> y x) (> x 0) (> a 0)))
+                    #:guarantee (assert (> (pwr a y) (pwr a x)))))
+
+   (check-sat
+    (verify/unbound #:assume (assert (and (>= y x) (> x 0) (> a 0)))
                     #:guarantee (assert (> (pwr a y) (pwr a x)))))
 ))
 

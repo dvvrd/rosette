@@ -8,7 +8,8 @@
 (define (neg x y) (- (x (void))))
 
 ; Expecting unsat
-(verify/unbound
- #:assume (assert (>= n 0))
- #:guarantee (let ([z (twice neg (curry g n) (void))])
-               (assert (>= z 0))))
+(time
+ (verify/unbound
+  #:assume (assert (>= n 0))
+  #:guarantee (let ([z (twice neg (curry g n) (void))])
+                (assert (>= z 0)))))

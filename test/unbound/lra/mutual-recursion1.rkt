@@ -6,6 +6,8 @@
 ; and try to prove x = y after all spacer can't accomplish it, though
 ; it solves current query (intuitively harder one)!
 
+(dbg-level 0)
+(merge-accuracy #f)
 (current-bitwidth #f)
 
 (define-symbolic n integer?)
@@ -28,8 +30,6 @@
   (test-suite+
    "[unbound] Tests for lra/mutual-recursion1.rkt"
 
-   (check-unsat
-    (verify/unbound (assert (and (zero? (f n)) (equal? x (+ y y))))))
    (check-unsat
     (verify/unbound (assert (and (zero? (f n)) (equal? (abs x) (* 2 y))))))
    (check-sat

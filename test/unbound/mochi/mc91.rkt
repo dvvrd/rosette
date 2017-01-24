@@ -8,5 +8,6 @@
         [else (mc91 (mc91 (+ x 11)))]))
 
 ; Expecting unsat
-(verify/unbound #:assume (assert (<= n 101))
-                #:guarantee (assert (= (mc91 n) 91)))
+(time
+ (verify/unbound #:assume (assert (<= n 101))
+                 #:guarantee (assert (= (mc91 n) 91))))

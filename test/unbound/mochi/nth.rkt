@@ -19,9 +19,10 @@
   (= (* 2 x) (+ x x)))
 
 ; Expecting unsat
-(verify/unbound
- (assert
+(time
+ (verify/unbound
+  (assert
    (trivial-query
     (if (> n 0)
         (nth (- n 1) (make-list n))
-        0))))
+        0)))))

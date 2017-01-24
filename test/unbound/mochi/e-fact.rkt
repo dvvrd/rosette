@@ -19,9 +19,10 @@
   (= (+ n n) (* 2 n)))
 
 ; Expecting unsat
-(verify/unbound
- #:assume (assert (> n 0))
- #:guarantee
- (assert
-  (trivial-query
-   (fact exn n))))
+(time
+ (verify/unbound
+  #:assume (assert (> n 0))
+  #:guarantee
+  (assert
+   (trivial-query
+    (fact exn n)))))

@@ -27,6 +27,6 @@
    
    (check-sat
     (verify/unbound (assert (= (add1 (mult x y)) (mult x y)))))
-))
+   ))
 
 (time (run-tests mult-tests))

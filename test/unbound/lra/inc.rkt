@@ -2,6 +2,8 @@
 
 (require rackunit rackunit/text-ui rosette/lib/roseunit)
 
+(dbg-level 0)
+(merge-accuracy #f)
 (current-bitwidth #f)
 (define-symbolic m n integer?)
 

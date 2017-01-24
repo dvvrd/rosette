@@ -11,4 +11,5 @@
   (if (null? xs) 0 (add1 (length/rec (cdr xs)))))
 
 ; Expecting unsat
-(verify/unbound (assert (= (length xs) (length/rec xs))))
+(time
+ (verify/unbound (assert (= (length xs) (length/rec xs)))))

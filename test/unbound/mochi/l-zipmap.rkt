@@ -16,4 +16,5 @@
   (if (= x 0) x (+ 1 (map (- x 1)))))
 
 ; Expecting unsat
-(verify/unbound (assert (= (map (zip n n)) n)))
+(time
+ (verify/unbound (assert (= (map (zip n n)) n))))

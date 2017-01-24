@@ -8,4 +8,5 @@
         [else (+ n (sum (- n 1)))]))
 
 ; Expecting unsat
-(verify/unbound (assert (<= n (sum n))))
+(time
+ (verify/unbound (assert (<= n (sum n)))))

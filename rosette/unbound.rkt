@@ -13,7 +13,7 @@
          "base/unbound/unbound.rkt")
 
 (current-bitwidth #f)
-(dbg-level 1)
+(dbg-level 0)
 
 (define (clear-state!)
   (clear-state!/bound)

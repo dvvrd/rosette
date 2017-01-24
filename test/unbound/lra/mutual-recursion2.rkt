@@ -2,6 +2,7 @@
 
 (require rackunit rackunit/text-ui rosette/lib/roseunit)
 
+(merge-accuracy #f)
 (current-bitwidth #f)
 
 (define-symbolic n integer?)

@@ -10,5 +10,6 @@
   (assert (> y z)))
 
 ; Expecting unsat
-(verify/unbound #:assume (assert (>= n 0))
-                #:guarantee (assert (f n (curry h n))))
+(time
+ (verify/unbound #:assume (assert (>= n 0))
+                 #:guarantee (assert (f n (curry h n)))))

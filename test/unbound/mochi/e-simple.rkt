@@ -11,4 +11,5 @@
   (assert (zero? n)))
 
 ; Expecting unsat
-(verify/unbound (assert (and (f n g) #t)))
+(time
+ (verify/unbound (assert (and (f n g) #t))))

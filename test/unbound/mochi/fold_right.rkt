@@ -17,6 +17,7 @@
   (+ x y))
 
 ; Expecting unsat
-(verify/unbound
- (assert
-  (>= (foldr add (make-list n) m) m)))
+(time
+ (verify/unbound
+  (assert
+   (>= (foldr add (make-list n) m) m))))

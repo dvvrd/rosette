@@ -14,6 +14,7 @@
         [else (cons x (make-list (- n 1) x))]))
 
 ; Expecting unsat
-(verify/unbound
+(time
+ (verify/unbound
   (let ([xs (make-list n m)])
-    (assert (or (null? xs) (mem m xs)))))
+    (assert (or (null? xs) (mem m xs))))))

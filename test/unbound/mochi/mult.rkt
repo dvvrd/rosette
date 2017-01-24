@@ -8,4 +8,5 @@
         [else (+ n (mult n (- m 1)))]))
 
 ; Expecting unsat
-(verify/unbound (assert (<= n (mult n n))))
+(time
+ (verify/unbound (assert (<= n (mult n n)))))

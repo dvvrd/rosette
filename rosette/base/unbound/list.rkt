@@ -99,7 +99,6 @@
   (define (comparator self u v)
     (unless (self u) (set!-values (u v) (values v u)))
     (match v
-      [(? self) (@equal? (@length u) (@length v))]
       [(union gvs _)
        (generic-merge*
         (map
@@ -111,6 +110,7 @@
        (&& (=? (@length u) (@length v))
            (=? (@car u) (@car v))
            (=? (@cdr u) (@cdr v)))]
+      [(? self) (@equal? (@length u) (@length v))]
       [_ #f])))
 
 ;; ----------------- Storage of information about list constants ----------------- ;;

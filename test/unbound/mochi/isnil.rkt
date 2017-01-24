@@ -9,9 +9,10 @@
       (cons n (make-list (sub1 n)))))
 
 ; Expecting unsat
-(verify/unbound
- #:assume (assert (> n 0))
- #:guarantee
- (let ([xs (make-list n)])
-   (assert
-    (not (null? xs)))))
+(time
+ (verify/unbound
+  #:assume (assert (> n 0))
+  #:guarantee
+  (let ([xs (make-list n)])
+    (assert
+     (not (null? xs))))))
